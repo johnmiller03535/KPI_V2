@@ -1,6 +1,9 @@
+import logging
 import httpx
 from typing import Optional
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 class RedmineClient:
     def __init__(self):
@@ -83,5 +86,73 @@ class RedmineClient:
                 return []
             except httpx.RequestError:
                 return []
+
+    async def create_issue(self, project_id: str, subject: str, description: str,
+                           tracker_id: int, assigned_to_id: int,
+                           custom_fields: list[dict]) -> Optional[dict]:
+        """Создаёт задачу в Redmine."""
+        payload = {
+            "issue": {
+                "project_id": project_id,
+                "subject": subject,
+                "description": description,
+                "tracker_id": tracker_id,
+                "assigned_to_id": assigned_to_id,
+                "custom_fields": custom_fields,
+            }
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/issues.json",
+                    headers={**self._headers(), "Content-Type": "application/json"},
+                    json=payload,
+                )
+                if response.status_code == 201:
+                    return response.json().get("issue")
+                logger.error(f"Redmine create_issue error {response.status_code}: {response.text}")
+                return None
+            except httpx.RequestError as e:
+                logger.error(f"Redmine create_issue request error: {e}")
+                return None
+
+    async def get_issue(self, issue_id: int) -> Optional[dict]:
+        """Получает задачу по ID."""
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/issues/{issue_id}.json",
+                    headers=self._headers(),
+                )
+                if response.status_code == 200:
+                    return response.json().get("issue")
+                return None
+            except httpx.RequestError:
+                return None
+
+    async def get_user_issues(self, assigned_to_id: int, project_id: str,
+                              tracker_id: Optional[int] = None) -> list[dict]:
+        """Получает задачи пользователя в проекте."""
+        params = {
+            "project_id": project_id,
+            "assigned_to_id": assigned_to_id,
+            "limit": 100,
+        }
+        if tracker_id:
+            params["tracker_id"] = tracker_id
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/issues.json",
+                    headers=self._headers(),
+                    params=params,
+                )
+                if response.status_code == 200:
+                    return response.json().get("issues", [])
+                return []
+            except httpx.RequestError:
+                return []
+
 
 redmine_client = RedmineClient()
