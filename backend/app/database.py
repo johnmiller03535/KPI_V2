@@ -25,4 +25,4 @@ async def get_db() -> AsyncSession:
             await session.close()
 
 # Импорт моделей для Alembic автодискавери
-from app.models import user, audit_log  # noqa: F401
+from app.models import user, audit_log, employee, sync_log  # noqa: F401
