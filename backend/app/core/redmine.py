@@ -130,6 +130,34 @@ class RedmineClient:
             except httpx.RequestError:
                 return None
 
+    async def get_time_entries(self, user_id: int,
+                               date_from: str, date_to: str,
+                               limit: int = 200) -> list[dict]:
+        """
+        Получает трудозатраты пользователя за период.
+        date_from, date_to — формат 'YYYY-MM-DD'
+        Возвращает список записей с полями: hours, comments, spent_on, activity, issue
+        """
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/time_entries.json",
+                    headers=self._headers(),
+                    params={
+                        "user_id": user_id,
+                        "from": date_from,
+                        "to": date_to,
+                        "limit": limit,
+                    },
+                )
+                if response.status_code == 200:
+                    return response.json().get("time_entries", [])
+                logger.error(f"get_time_entries error {response.status_code}")
+                return []
+            except httpx.RequestError as e:
+                logger.error(f"get_time_entries request error: {e}")
+                return []
+
     async def get_user_issues(self, assigned_to_id: int, project_id: str,
                               tracker_id: Optional[int] = None) -> list[dict]:
         """Получает задачи пользователя в проекте."""
