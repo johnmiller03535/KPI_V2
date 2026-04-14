@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-14
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-14 (этап 3)
 
 ## О проекте
 
@@ -58,9 +58,9 @@ kpi-portal/
 | Этап | Название | Статус |
 |---|---|---|
 | 0 | Фундамент (Docker, FastAPI, Next.js, PG) | ✅ |
-| 1 | Авторизация и роли | ⏳ |
-| 2 | Синхронизация с Redmine | ⏳ |
-| 3 | Управление периодами (Админ) | ⏳ |
+| 1 | Авторизация и роли | ✅ |
+| 2 | Синхронизация с Redmine | ✅ |
+| 3 | Управление периодами (Админ) | ✅ |
 | 4 | KPI-форма сотрудника + Claude API | ⏳ |
 | 5 | Дашборд руководителя + утверждение | ⏳ |
 | 6 | Генерация PDF + запись в Redmine | ⏳ |
@@ -77,3 +77,24 @@ kpi-portal/
 - PDF через WeasyPrint (HTML-шаблон → PDF, печатается на любой ОС)
 - Уведомления только через Telegram
 - Синхронизация с Redmine — еженедельно (APScheduler)
+
+## Этап 3 — Управление периодами (детали реализации)
+
+### Модели
+- `Period` — таблица `periods`: тип (monthly/quarterly/yearly), даты, статус (draft→active→review→closed)
+- `PeriodException` — таблица `period_exceptions`: исключения сотрудников (dismissed/transferred/excluded/maternity)
+
+### API (`/api/periods/`)
+- `POST /` — создаёт период со статусом `draft` (только admin)
+- `GET /` — список с фильтрами `?status=` и `?year=`
+- `POST /{id}/create-tasks?dry_run=true` — создаёт задачи в Redmine; `dry_run` не меняет данные
+- `POST /{id}/exceptions` / `GET /{id}/exceptions` — управление исключениями
+
+### Маппинги Redmine (временные, замена в этапе 4)
+- `DEPT_PROJECT_MAP`: department_code → Redmine project identifier (9 проектов kpi-*)
+- `dept_tracker_map`: project_id → tracker_id (fallback, первый трекер подразделения)
+- Кастомные поля: CF_PERIOD=205 (период), CF_ROLE_ID=206 (должность)
+
+### Frontend
+- `/admin/periods` — страница управления периодами (только admin)
+- `/dashboard` — ссылка «Управление периодами» для роли admin
