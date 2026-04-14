@@ -1,0 +1,735 @@
+{
+  "generated": "2026-04-13",
+  "period_hint": "используется create_issues.py --period",
+  "staff": [
+    {
+      "user_id": 351,
+      "login": "AbramovKiA",
+      "fullname": "Кирилл Абрамов",
+      "department": "ЕАС",
+      "role_id": "ЕАС_КОН_026",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 410,
+      "login": "AdrianovskaiaElI",
+      "fullname": "Елизавета Адриановская",
+      "department": "ЦТР",
+      "role_id": "ЦТР_КОН_080",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 455,
+      "login": "AgaevDE",
+      "fullname": "Даниэль Агаев",
+      "department": "ЕАС",
+      "role_id": "ЕАС_КОН_029",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 412,
+      "login": "AgevninaViA",
+      "fullname": "Виктория Агевнина",
+      "department": "ЦТР",
+      "role_id": "ЦТР_ЗАМ_НАЧ_ОТД_077",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 435,
+      "login": "AkhsianovaAK",
+      "fullname": "Алсу Ахсянова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_КОН_015",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 156,
+      "login": "AlekhinaAL",
+      "fullname": "Александра Алёхина",
+      "department": "КЗА",
+      "role_id": "КЗА_ЗАМ_ОТД_045",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 59,
+      "login": "AlekseevaTaE",
+      "fullname": "Татьяна Алексеева",
+      "department": "ОРГ",
+      "role_id": "ОРГ_НАЧ_ОТД_016",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 457,
+      "login": "AmelinaDR",
+      "fullname": "Дарья Амелина",
+      "department": "ЗПР",
+      "role_id": "ЗПР_ГСП_066",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 111,
+      "login": "AstakhovaAlD",
+      "fullname": "Александра Астахова",
+      "department": "ЕАС",
+      "role_id": "ЕАС_КОН_023",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 245,
+      "login": "BaranovOlI",
+      "fullname": "Олег Баранов",
+      "department": "ААД",
+      "role_id": "ААД_КОН_086",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 454,
+      "login": "BelovaNaEv",
+      "fullname": "Наталья Белова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_КОН_009",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 448,
+      "login": "BelozerovPA",
+      "fullname": "Петр Белозеров",
+      "department": "ПРА",
+      "role_id": "ПРА_ЗАМ_ОТД_039",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 411,
+      "login": "BeltiugovRV",
+      "fullname": "Руслан Бельтюгов",
+      "department": "ЦТР",
+      "role_id": "ЦТР_ЗАМ_НАЧ_ОТД_073",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 152,
+      "login": "BerezkinAS",
+      "fullname": "Алексей Березкин",
+      "department": "ПРА",
+      "role_id": "ПРА_ЗАМ_НАЧ_ОТД_034",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 294,
+      "login": "BolshakovaMI",
+      "fullname": "Марина Большакова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ГСП_013",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 441,
+      "login": "BorisovDO",
+      "fullname": "Данила Борисов",
+      "department": "ЕАС",
+      "role_id": "ЕАС_КОН_029",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 371,
+      "login": "ChaykaMaO",
+      "fullname": "Марина Чайка",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ЗАМ_ОТД_017",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 437,
+      "login": "ChebushevAnAl",
+      "fullname": "Андрей Чебушев",
+      "department": "ЗПД",
+      "role_id": "ЗПД_КОН_060",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 66,
+      "login": "DanilovaOS",
+      "fullname": "Ольга Данилова",
+      "department": "ААД",
+      "role_id": "ААД_НАЧ_ОТД_088",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 292,
+      "login": "DaniushevskaiaSM",
+      "fullname": "Светлана Данюшевская",
+      "department": "ЗПД",
+      "role_id": "ЗПД_КОН_056",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 446,
+      "login": "DemidiukIaN",
+      "fullname": "Ярослав Демидюк",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ЗАМ_ОТД_008",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 445,
+      "login": "EgorovaIriIv",
+      "fullname": "Ирина Егорова",
+      "department": "ЗПР",
+      "role_id": "ЗПР_КОН_065",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 434,
+      "login": "ElokhinaTA",
+      "fullname": "Татьяна Елохина",
+      "department": "ЗПР",
+      "role_id": "ЗПР_КОН_069",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 387,
+      "login": "ErmakovaAnaIu",
+      "fullname": "Анастасия Ермакова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ЗАМ_ОТД_012",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 250,
+      "login": "FedorovaNaMi",
+      "fullname": "Наталья Федорова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ЗАМ_НАЧ_ОТД_011",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 144,
+      "login": "FedorovaTatAn",
+      "fullname": "Татьяна Волхонская",
+      "department": "ПРА",
+      "role_id": "ПРА_КОН_037",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 91,
+      "login": "FerrahLE",
+      "fullname": "Людмила Феррах",
+      "department": "ААД",
+      "role_id": "ААД_КОН_091",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 430,
+      "login": "GasanovArSi",
+      "fullname": "Артур Гасанов",
+      "department": "ПРА",
+      "role_id": "ПРА_ЗАМ_ОТД_035",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 416,
+      "login": "GordienkoEG",
+      "fullname": "Евгения Гордиенко",
+      "department": "ЗПД",
+      "role_id": "ЗПД_КОН_056",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 408,
+      "login": "GrebeniukovaES",
+      "fullname": "Елизавета Гребенюкова",
+      "department": "ЗПД",
+      "role_id": "ЗПД_КОН_060",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 251,
+      "login": "IvanovaMaIg",
+      "fullname": "Мария Иванова",
+      "department": "ААД",
+      "role_id": "ААД_КОН_086",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 338,
+      "login": "IvanovaOkAl",
+      "fullname": "Оксана Иванова",
+      "department": "ЗПР",
+      "role_id": "ЗПР_ЗАМ_ОТД_064",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 431,
+      "login": "KhalikovaAI",
+      "fullname": "Аида Халикова",
+      "department": "ЗПД",
+      "role_id": "ЗПД_КОН_060",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 343,
+      "login": "KhasarokovaSS",
+      "fullname": "Светлана Хасарокова",
+      "department": "ЗПР",
+      "role_id": "ЗПР_ЗАМ_ОТД_068",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 389,
+      "login": "KhorevOlG",
+      "fullname": "Олег Хорев",
+      "department": "РУК",
+      "role_id": "РУК_ЗАМД_003",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 447,
+      "login": "KhorkovaIuNi",
+      "fullname": "Юлия Хорькова",
+      "department": "ПРА",
+      "role_id": "ПРА_НАЧ_032",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 370,
+      "login": "KhromovaKN",
+      "fullname": "Кристина Хромова",
+      "department": "ЗПД",
+      "role_id": "ЗПД_НАЧ_052",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 154,
+      "login": "KhukhrinaEkE",
+      "fullname": "Екатерина Хухрина",
+      "department": "ЕАС",
+      "role_id": "ЕАС_ЗАМ_НАЧ_ОТД_021",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 409,
+      "login": "KolmogortsevaVD",
+      "fullname": "Виктория Колмогорцева",
+      "department": "ПРА",
+      "role_id": "ПРА_КОН_036",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 392,
+      "login": "KolomytovRO",
+      "fullname": "Руслан Коломытов",
+      "department": "ЦТР",
+      "role_id": "ЦТР_КОН_075",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 114,
+      "login": "KomarovAnD",
+      "fullname": "Андрей Комаров",
+      "department": "ЕАС",
+      "role_id": "ЕАС_НАЧ_019",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 129,
+      "login": "KorablinaOlN",
+      "fullname": "Ольга Воронина",
+      "department": "РУК",
+      "role_id": "РУК_ЗАМД_002",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 357,
+      "login": "KoriakinaEA",
+      "fullname": "Екатерина Корякина",
+      "department": "ПРА",
+      "role_id": "ПРА_КОН_036",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 386,
+      "login": "KornilovaElA",
+      "fullname": "Корнилова Елизавета",
+      "department": "ЗПР",
+      "role_id": "ЗПР_ГСП_070",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 440,
+      "login": "KorolkovaDA",
+      "fullname": "Дарья Королькова",
+      "department": "ААД",
+      "role_id": "ААД_КОН_090",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 352,
+      "login": "KorotaevaNP",
+      "fullname": "Наталия Коротаева",
+      "department": "ЗПД",
+      "role_id": "ЗПД_ЗАМ_ОТД_055",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 398,
+      "login": "KostinaDaM",
+      "fullname": "Дарья Костина",
+      "department": "ЦТР",
+      "role_id": "ЦТР_КОН_075",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 304,
+      "login": "KostrovaIV",
+      "fullname": "Ирина Кострова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_НАЧ_005",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 449,
+      "login": "KotelnikovVA",
+      "fullname": "Виктор Котельников",
+      "department": "ЦТР",
+      "role_id": "ЦТР_ЗАМ_ОТД_078",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 312,
+      "login": "KovalskiyPM",
+      "fullname": "Павел Ковальский",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ЗАМ_006",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 32,
+      "login": "KozlovDmS",
+      "fullname": "Дмитрий Козлов",
+      "department": "КЗА",
+      "role_id": "КЗА_ЗАМ_НАЧ_ОТД_048",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 432,
+      "login": "KukartsevaOV",
+      "fullname": "Ольга Кукарцева",
+      "department": "КЗА",
+      "role_id": "КЗА_НАЧ_042",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 400,
+      "login": "KulikovaVN",
+      "fullname": "Вера Куликова",
+      "department": "ЗПД",
+      "role_id": "ЗПД_ГСП_057",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 209,
+      "login": "LuzhakovaTI",
+      "fullname": "Татьяна Лужакова",
+      "department": "ААД",
+      "role_id": "ААД_КОН_086",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 451,
+      "login": "MatveevaKA",
+      "fullname": "Ксения Матвеева",
+      "department": "ОРГ",
+      "role_id": "ОРГ_КОН_014",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 365,
+      "login": "MaykovaVaS",
+      "fullname": "Валерия Майкова",
+      "department": "ЕАС",
+      "role_id": "ЕАС_КОН_023",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 215,
+      "login": "MeliukhKV",
+      "fullname": "Ксения Мелюх",
+      "department": "ОРГ",
+      "role_id": "ОРГ_КОН_018",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 401,
+      "login": "MelnikovaNatMi",
+      "fullname": "Наталья Мельникова",
+      "department": "ЦТР",
+      "role_id": "ЦТР_ГСП_076",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 407,
+      "login": "MutovkinPA",
+      "fullname": "Пётр Мутовкин",
+      "department": "ЕАС",
+      "role_id": "ЕАС_КОН_025",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 342,
+      "login": "NuzhdovaZA",
+      "fullname": "Жанна Нуждова",
+      "department": "ЗПД",
+      "role_id": "ЗПД_ЗАМ_НАЧ_ОТД_058",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 248,
+      "login": "OsipovaNaAn",
+      "fullname": "Наталия Митрошина",
+      "department": "ЗПР",
+      "role_id": "ЗПР_ЗАМ_НАЧ_ОТД_067",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 33,
+      "login": "OsokinaGA",
+      "fullname": "Галина Осокина",
+      "department": "КЗА",
+      "role_id": "КЗА_КОН_046",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 255,
+      "login": "PetrovaAnnIu",
+      "fullname": "Анна Петрова",
+      "department": "ААД",
+      "role_id": "ААД_НАЧ_081",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 112,
+      "login": "PetrovAlMi",
+      "fullname": "Александр Петров",
+      "department": "ЕАС",
+      "role_id": "ЕАС_ЗАМ_ОТД_028",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 383,
+      "login": "PetuninaEvAn",
+      "fullname": "Евгения Петунина",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ЗАМ_НАЧ_ОТД_007",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 296,
+      "login": "PoliakovNiD",
+      "fullname": "Никита Поляков",
+      "department": "ЕАС",
+      "role_id": "ЕАС_ЗАМ_020",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 244,
+      "login": "PozdniakovaTS",
+      "fullname": "Татьяна Позднякова",
+      "department": "ЦТР",
+      "role_id": "ЦТР_ЗАМ_072",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 323,
+      "login": "ShatalovaSA",
+      "fullname": "Светлана Шаталова",
+      "department": "ААД",
+      "role_id": "ААД_КОН_087",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 415,
+      "login": "ShestakMV",
+      "fullname": "Маргарита Шестак",
+      "department": "ПРА",
+      "role_id": "ПРА_ГАН_041",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 353,
+      "login": "SilakovSA",
+      "fullname": "Сергей Силаков",
+      "department": "ЦТР",
+      "role_id": "ЦТР_ЗАМ_ОТД_074",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 443,
+      "login": "TalkoND",
+      "fullname": "Никита Талько",
+      "department": "ЗПР",
+      "role_id": "ЗПР_КОН_065",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 335,
+      "login": "TeslinaAS",
+      "fullname": "Анна Теслина",
+      "department": "ЗПР",
+      "role_id": "ЗПР_ЗАМ_НАЧ_ОТД_063",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 391,
+      "login": "ToroykinPO",
+      "fullname": "Павел Торойкин",
+      "department": "ЦТР",
+      "role_id": "ЦТР_КОН_079",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 305,
+      "login": "TrushinaAnA",
+      "fullname": "Анна Трушина",
+      "department": "ОРГ",
+      "role_id": "ОРГ_ГСП_013",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 199,
+      "login": "UlevichES",
+      "fullname": "Елена Ульевич",
+      "department": "ЗПД",
+      "role_id": "ЗПД_ЗАМ_НАЧ_ОТД_054",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 16,
+      "login": "VasilevaIrAl",
+      "fullname": "Ирина  Васильева",
+      "department": "ААД",
+      "role_id": "ААД_КОН_085",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 289,
+      "login": "VinokurovMiA",
+      "fullname": "Михаил Винокуров",
+      "department": "ЦТР",
+      "role_id": "ЦТР_НАЧ_071",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 393,
+      "login": "VolodinKO",
+      "fullname": "Кирилл Володин",
+      "department": "ААД",
+      "role_id": "ААД_ЗАМ_082",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 182,
+      "login": "ZabeyvorotaMA",
+      "fullname": "Максим Забейворота",
+      "department": "ААД",
+      "role_id": "ААД_ЗАМ_НАЧ_ОТД_083",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 373,
+      "login": "ZaichkoVV",
+      "fullname": "Валерий Заичко",
+      "department": "РУК",
+      "role_id": "РУК_ЗАМД_004",
+      "active": true,
+      "transfers": []
+    },
+    {
+      "user_id": 377,
+      "login": "ZavialovaEI",
+      "fullname": "Елена Завьялова",
+      "department": "ОРГ",
+      "role_id": "ОРГ_КОН_009",
+      "active": true,
+      "transfers": []
+    }
+  ]
+}
