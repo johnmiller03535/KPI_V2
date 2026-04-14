@@ -53,6 +53,17 @@ export default function DashboardPage() {
         <p><strong>Логин:</strong> {user.login}</p>
         <p><strong>Роль:</strong> {user.role}</p>
         {user.department && <p><strong>Подразделение:</strong> {user.department}</p>}
+        {user.role === 'admin' && (
+          <a href="/admin/periods" style={{
+            display: 'inline-block', marginTop: '1rem',
+            padding: '0.5rem 1rem',
+            background: '#2563eb', color: 'white',
+            borderRadius: '6px', textDecoration: 'none',
+            fontSize: '0.875rem',
+          }}>
+            Управление периодами
+          </a>
+        )}
       </div>
     </div>
   )
