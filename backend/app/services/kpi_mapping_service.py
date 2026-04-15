@@ -103,24 +103,23 @@ class KpiMappingService:
         return self._indicators.get(role_id, [])
 
     def get_binary_auto_criteria(self, role_id: str) -> list[str]:
-        """Возвращает список критериев с formula_type=binary_auto (для AI-саммари)."""
+        """formula_type == '100%' → бинарные KPI, описание через AI."""
         kpis = self.get_kpi_for_role(role_id)
-        criteria = []
+        seen: set[str] = set()
+        criteria: list[str] = []
         for kpi in kpis:
-            if kpi["formula_type"] == "binary_auto":
-                # criterion может содержать несколько через ' | '
+            if kpi["formula_type"] == "100%":
                 for c in kpi["criterion"].split(" | "):
                     c = c.strip()
-                    if c:
+                    if c and c not in seen:
+                        seen.add(c)
                         criteria.append(c)
         return criteria
 
     def get_numeric_kpis(self, role_id: str) -> list[dict]:
-        """Возвращает KPI, требующие ручного ввода числовых значений."""
+        """formula_type != '100%' → числовые KPI, ввод вручную."""
         kpis = self.get_kpi_for_role(role_id)
-        numeric_types = {"threshold", "multi_threshold", "quarterly_threshold",
-                         "productivity", "count_min"}
-        return [k for k in kpis if k["formula_type"] in numeric_types]
+        return [k for k in kpis if k["formula_type"] != "100%"]
 
     def get_all_roles(self) -> list[dict]:
         self._load()
