@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
@@ -11,6 +12,7 @@ from app.api.review import router as review_router
 from app.api.reports import router as reports_router
 from app.api.notifications import router as notifications_router
 from app.scheduler import start_scheduler, stop_scheduler
+from app.bot.runner import start_bot, stop_bot
 
 app = FastAPI(
     title="KPI Portal API",
@@ -40,7 +42,9 @@ app.include_router(notifications_router)
 async def startup():
     print(f"✅ KPI Portal запущен в режиме: {settings.app_env}")
     start_scheduler()
+    asyncio.create_task(start_bot())
 
 @app.on_event("shutdown")
 async def shutdown():
     stop_scheduler()
+    await stop_bot()

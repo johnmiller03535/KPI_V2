@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-16 (этап 7)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-16 (этап 8)
 
 ## О проекте
 
@@ -65,7 +65,7 @@ kpi-portal/
 | 5 | Дашборд руководителя + утверждение | ✅ |
 | 6 | Генерация PDF + запись в Redmine | ✅ |
 | 7 | Система напоминаний | ✅ |
-| 8 | Telegram-бот (руководители) | ⏳ |
+| 8 | Telegram-бот (руководители) | ✅ |
 | 9 | Панель администратора | ⏳ |
 | 10 | Финансовый дашборд | ⏳ |
 
@@ -159,3 +159,33 @@ kpi-portal/
 ### Frontend
 - `/admin/notifications` — страница: статистика по статусам, фильтры, лог уведомлений, кнопка ручного запуска с результатом
 - `/dashboard` — кнопка «Уведомления» (cyan) для роли `admin` рядом с «Управление периодами»
+
+## Этап 8 — Telegram-бот для руководителей (детали реализации)
+
+### Модули (`backend/app/bot/`)
+- `__init__.py` — пустой, делает директорию пакетом
+- `bot.py` — инициализация `Bot` и `Dispatcher` (aiogram 3); токен из `settings.telegram_bot_token`
+- `keyboards.py` — inline-клавиатуры: `review_keyboard(submission_id)`, `confirm_reject_keyboard`, `already_decided_keyboard`
+- `handlers.py` — роутер с хендлерами команд и callback-кнопок
+- `runner.py` — `start_bot()` / `stop_bot()`: polling-режим, запускается как `asyncio.create_task`
+
+### Команды бота
+- `/start` — приветствие с именем сотрудника (из `employees` по `telegram_id`)
+- `/portal` — ссылка на веб-портал
+- `/pending` — количество `submitted`-отчётов подчинённых (через `subordination_service`)
+- `/cancel` — отмена текущего FSM-состояния
+
+### Callback-хендлеры
+- `approve:<submission_id>` — утверждает отчёт, запускает автофинализацию (PDF + Redmine + finance TG)
+- `reject_start:<submission_id>` → FSM `RejectStates.waiting_comment` → вводит комментарий → `rejected`; при reject уведомляет сотрудника в TG
+- Идемпотентность: если статус уже не `submitted` → показывает `already_decided_keyboard`
+
+### Уведомление при submit
+- `kpi_submissions.py::submit_for_review` после `commit` вызывает `_notify_manager_about_submission`
+- Находит руководителя через `subordination_service.get_evaluator_position(position_id)`
+- Отправляет сообщение с `review_keyboard` в `manager.telegram_id`
+- Ошибки отправки логируются, но не прерывают submit
+
+### Интеграция в main.py
+- `startup`: `asyncio.create_task(start_bot())` — бот запускается в фоне вместе с FastAPI
+- `shutdown`: `await stop_bot()` — закрывает сессию бота

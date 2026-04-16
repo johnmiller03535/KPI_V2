@@ -235,7 +235,78 @@ async def submit_for_review(
 
     await db.commit()
     await db.refresh(sub)
+
+    # Уведомить руководителя в Telegram
+    try:
+        await _notify_manager_about_submission(sub, current_user, db)
+    except Exception as e:
+        logger.error(f"Ошибка уведомления руководителя: {e}")
+
     return _to_response(sub)
+
+
+async def _notify_manager_about_submission(
+    sub: KpiSubmission,
+    employee_user,
+    db,
+) -> None:
+    """Отправляет руководителю уведомление с кнопками approve/reject."""
+    from app.services.subordination_service import subordination_service
+    from app.services.kpi_mapping_service import kpi_mapping_service
+    from app.bot.bot import bot
+    from app.bot.keyboards import review_keyboard
+    from app.config import settings
+
+    if not settings.telegram_bot_token:
+        return
+
+    # Найти сотрудника
+    emp_result = await db.execute(
+        select(Employee).where(Employee.redmine_id == employee_user.redmine_id)
+    )
+    emp = emp_result.scalar_one_or_none()
+    if not emp or not emp.position_id:
+        return
+
+    # Найти руководителя через subordination
+    evaluator_pos = subordination_service.get_evaluator_position(emp.position_id)
+    if not evaluator_pos:
+        return
+
+    mgr_result = await db.execute(
+        select(Employee).where(
+            Employee.position_id == evaluator_pos,
+            Employee.is_active == True,
+        )
+    )
+    manager = mgr_result.scalar_one_or_none()
+    if not manager or not manager.telegram_id:
+        logger.warning(
+            f"Руководитель {evaluator_pos} не найден или нет telegram_id"
+        )
+        return
+
+    # Название должности сотрудника
+    role_info = kpi_mapping_service.get_role_info(emp.position_id)
+    role_name = role_info["role"] if role_info else emp.position_id
+
+    text = (
+        f"📋 <b>Новый KPI-отчёт на проверку</b>\n\n"
+        f"👤 Сотрудник: <b>{emp.full_name}</b>\n"
+        f"💼 Должность: {role_name}\n"
+        f"📅 Период: {sub.period_name}\n\n"
+        f"Выберите действие или откройте портал для детального просмотра."
+    )
+
+    await bot.send_message(
+        chat_id=manager.telegram_id,
+        text=text,
+        reply_markup=review_keyboard(str(sub.id)),
+    )
+    logger.info(
+        f"Уведомление отправлено руководителю {manager.login} "
+        f"об отчёте {emp.login} за {sub.period_name}"
+    )
 
 
 @router.get("/my/{submission_id}/kpi-structure")
