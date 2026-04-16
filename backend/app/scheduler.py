@@ -3,6 +3,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.database import AsyncSessionLocal
 from app.services.sync_service import sync_service
+from app.services.reminder_service import reminder_service
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,13 @@ async def run_employee_sync():
             f"уволено={result.dismissed_count}"
         )
 
+async def run_daily_reminders():
+    """Ежедневная рассылка напоминаний — 09:00 МСК."""
+    logger.info("Запуск ежедневных напоминаний...")
+    async with AsyncSessionLocal() as db:
+        stats = await reminder_service.run_daily_reminders(db)
+        logger.info(f"Напоминания: {stats}")
+
 def start_scheduler():
     # Каждое воскресенье в 02:00 по Москве
     scheduler.add_job(
@@ -28,8 +36,15 @@ def start_scheduler():
         id="employee_sync",
         replace_existing=True,
     )
+    # Каждый день в 09:00 по Москве
+    scheduler.add_job(
+        run_daily_reminders,
+        CronTrigger(hour=9, minute=0),
+        id="daily_reminders",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("Планировщик запущен")
+    logger.info("Планировщик запущен (синхронизация + напоминания)")
 
 def stop_scheduler():
     scheduler.shutdown()

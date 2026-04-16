@@ -73,15 +73,26 @@ export default function DashboardPage() {
         <p style={{ margin: '0.25rem 0' }}><strong>Роль:</strong> {user.role}</p>
         {user.department && <p style={{ margin: '0.25rem 0' }}><strong>Подразделение:</strong> {user.department}</p>}
         {user.role === 'admin' && (
-          <a href="/admin/periods" style={{
-            display: 'inline-block', marginTop: '1rem',
-            padding: '0.5rem 1rem',
-            background: '#2563eb', color: 'white',
-            borderRadius: '6px', textDecoration: 'none',
-            fontSize: '0.875rem',
-          }}>
-            Управление периодами
-          </a>
+          <>
+            <a href="/admin/periods" style={{
+              display: 'inline-block', marginTop: '1rem',
+              padding: '0.5rem 1rem',
+              background: '#2563eb', color: 'white',
+              borderRadius: '6px', textDecoration: 'none',
+              fontSize: '0.875rem',
+            }}>
+              Управление периодами
+            </a>
+            <a href="/admin/notifications" style={{
+              display: 'inline-block', marginTop: '1rem', marginLeft: '0.5rem',
+              padding: '0.5rem 1rem',
+              background: '#0891b2', color: 'white',
+              borderRadius: '6px', textDecoration: 'none',
+              fontSize: '0.875rem',
+            }}>
+              Уведомления
+            </a>
+          </>
         )}
         {(user.role === 'manager' || user.role === 'admin') && (
           <a href="/review" style={{

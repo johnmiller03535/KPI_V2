@@ -9,6 +9,7 @@ from app.api.periods import router as periods_router
 from app.api.kpi_submissions import router as submissions_router
 from app.api.review import router as review_router
 from app.api.reports import router as reports_router
+from app.api.notifications import router as notifications_router
 from app.scheduler import start_scheduler, stop_scheduler
 
 app = FastAPI(
@@ -33,6 +34,7 @@ app.include_router(periods_router)
 app.include_router(submissions_router)
 app.include_router(review_router)
 app.include_router(reports_router)
+app.include_router(notifications_router)
 
 @app.on_event("startup")
 async def startup():
