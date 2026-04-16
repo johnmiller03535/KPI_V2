@@ -262,8 +262,11 @@ async def process_reject_comment(message: Message, state: FSMContext):
             )
             emp = emp_result.scalar_one_or_none()
             if emp and emp.telegram_id:
-                from app.bot.bot import bot
-                await bot.send_message(
+                from app.bot.bot import get_bot
+                _bot = get_bot()
+                if not _bot:
+                    return
+                await _bot.send_message(
                     chat_id=emp.telegram_id,
                     text=(
                         f"↩️ <b>Отчёт возвращён на доработку</b>\n\n"
