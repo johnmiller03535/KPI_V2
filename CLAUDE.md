@@ -67,7 +67,7 @@ kpi-portal/
 | 7 | Система напоминаний | ✅ |
 | 8 | Telegram-бот (руководители) | ✅ |
 | 9 | Панель администратора | ✅ |
-| 10 | Финансовый дашборд | ⏳ |
+| 10 | Финансовый дашборд | ✅ |
 
 ## Ключевые решения (зафиксированные)
 
@@ -208,3 +208,46 @@ kpi-portal/
   - Аудит: лог последних 50 действий
   - Кнопки «Синхронизировать Redmine» и «Запустить напоминания» в шапке
 - `/dashboard` — кнопка «⚙️ Админ-панель» (тёмная) для роли admin
+
+## Этап 10 — Финансовый дашборд (детали реализации)
+
+### API (`/api/finance/`) — роли finance и admin
+- `GET /periods` — список активных/закрытых периодов для фильтра
+- `GET /reports?period_id=&department_code=&status=` — отчёты со статусами approved+submitted; сортировка по подразделению/имени
+- `GET /periods/{id}/summary` — сводка готовности по подразделениям (is_complete, completion_pct)
+
+### Frontend
+- `/finance` — страница с фильтрами (период, подразделение) и двумя вкладками:
+  - Сводка: общий прогресс + прогресс-бары по каждому подразделению с бейджами «✅ Готово» / «⏳ Частично»
+  - Список: отчёты сгруппированы по подразделению, ссылки «🔗 Redmine» и «📄 PDF» для каждого
+- `/dashboard` — кнопка «💰 Финансовый дашборд» (зелёная) для ролей finance и admin
+
+### Оптимизация
+- Сотрудники загружаются одним запросом (`redmine_id.in_(...)`) вместо N запросов в цикле
+
+## Деплой на Amvera
+
+### Переменные окружения (.env на сервере)
+- `REDMINE_URL`, `REDMINE_API_KEY`
+- `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- `JWT_SECRET_KEY` — минимум 32 символа, случайная строка
+- `TELEGRAM_BOT_TOKEN` — токен бота
+- `ANTHROPIC_API_KEY` — ключ Claude API
+- `FINANCE_TELEGRAM_IDS` — chat_id финансового блока через запятую
+- `FRONTEND_URL` — URL фронтенда (для CORS)
+- `BACKEND_URL` — URL бэкенда
+
+### После деплоя
+```bash
+# Применить все миграции
+docker compose exec backend alembic upgrade head
+
+# Запустить первую синхронизацию сотрудников
+curl -X POST https://your-app.amvera.io/api/sync/run \
+  -H "Authorization: Bearer <admin_token>"
+```
+
+### Важные замечания
+- `reference/` монтируется как read-only — `KPI_Mapping.xlsx` и `subordination.json` должны быть в репо
+- Первый вход — войти через Redmine-учётку, затем вручную выставить роль `admin` в таблице `users`
+- Telegram-бот работает в polling-режиме — дополнительных настроек не требует
