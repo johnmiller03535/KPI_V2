@@ -1,14 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://backend:8000/api/:path*',
-      },
-    ]
-  },
+  // Убираем rewrites — nginx проксирует /api напрямую на backend
 }
 
 module.exports = nextConfig

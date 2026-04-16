@@ -5,11 +5,8 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Автоматически добавляет access_token к запросам и trailing slash
+// Добавляет токен авторизации
 api.interceptors.request.use((config) => {
-  if (config.url && !config.url.endsWith('/') && !config.url.includes('?')) {
-    config.url = config.url + '/'
-  }
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('access_token')
     if (token) {
@@ -29,7 +26,9 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refresh_token')
       if (refreshToken) {
         try {
-          const res = await axios.post('/api/auth/refresh', { refresh_token: refreshToken })
+          const res = await axios.post('/api/auth/refresh', {
+            refresh_token: refreshToken,
+          })
           localStorage.setItem('access_token', res.data.access_token)
           localStorage.setItem('refresh_token', res.data.refresh_token)
           original.headers.Authorization = `Bearer ${res.data.access_token}`
