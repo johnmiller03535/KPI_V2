@@ -174,6 +174,24 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
     }
   }
 
+  async function downloadPdf() {
+    const token = localStorage.getItem('access_token')
+    const res = await fetch(`/api/reports/${submissionId}/pdf`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (res.ok) {
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `KPI_${submission!.period_name}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } else {
+      alert('Ошибка генерации PDF')
+    }
+  }
+
   const isEditable = submission?.status === 'draft' || submission?.status === 'rejected'
   const statusStyle = STATUS_COLORS[submission?.status || 'draft']
 
@@ -342,23 +360,21 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
       {/* Скачать PDF — только для утверждённых отчётов */}
       {submission?.status === 'approved' && (
         <div style={{ marginTop: '1.5rem' }}>
-          <a
-            href={`/api/reports/${submissionId}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={downloadPdf}
             style={{
-              display: 'inline-block',
               padding: '0.625rem 1.25rem',
               background: '#7c3aed',
               color: 'white',
+              border: 'none',
               borderRadius: '6px',
-              textDecoration: 'none',
+              cursor: 'pointer',
               fontSize: '0.875rem',
               fontWeight: 600,
             }}
           >
-            Скачать PDF-отчёт
-          </a>
+            📄 Скачать PDF-отчёт
+          </button>
         </div>
       )}
     </div>
