@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     # Telegram
     telegram_bot_token: Optional[str] = None
+    # chat_id финансового блока через запятую, напр. "123456,654321"
+    finance_telegram_ids: str = ""
 
     # Claude
     anthropic_api_key: Optional[str] = None
@@ -28,6 +30,13 @@ class Settings(BaseSettings):
     app_env: str = "development"
     frontend_url: str = "http://localhost:3000"
     backend_url: str = "http://localhost:8000"
+
+    @property
+    def finance_chat_ids(self) -> list[str]:
+        """Список chat_id для уведомлений финансового блока."""
+        if not self.finance_telegram_ids:
+            return []
+        return [x.strip() for x in self.finance_telegram_ids.split(",") if x.strip()]
 
     @property
     def database_url(self) -> str:

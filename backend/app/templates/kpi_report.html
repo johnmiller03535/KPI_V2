@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 15mm 10mm 15mm 10mm;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 9pt;
+    color: #000;
+  }
+
+  .title-block {
+    text-align: center;
+    margin-bottom: 8mm;
+  }
+
+  .title-block h1 {
+    font-size: 11pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2mm;
+  }
+
+  .title-block h2 {
+    font-size: 9pt;
+    font-weight: normal;
+  }
+
+  .meta-table {
+    width: 100%;
+    margin-bottom: 6mm;
+    border-collapse: collapse;
+  }
+
+  .meta-table td {
+    padding: 1mm 2mm;
+    font-size: 9pt;
+  }
+
+  .meta-table td:first-child {
+    font-weight: bold;
+    width: 35mm;
+    white-space: nowrap;
+  }
+
+  .kpi-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6mm;
+  }
+
+  .kpi-table th, .kpi-table td {
+    border: 1px solid #000;
+    padding: 1.5mm 2mm;
+    vertical-align: top;
+    font-size: 8pt;
+  }
+
+  .kpi-table th {
+    background-color: #d9d9d9;
+    font-weight: bold;
+    text-align: center;
+    vertical-align: middle;
+  }
+
+  .col-indicator { width: 12%; }
+  .col-criterion { width: 16%; }
+  .col-plan      { width: 6%; text-align: center; }
+  .col-weight    { width: 6%; text-align: center; }
+  .col-measures  { width: 36%; }
+  .col-fact      { width: 6%; text-align: center; }
+  .col-pct       { width: 8%; text-align: center; }
+  .col-result    { width: 10%; text-align: center; }
+
+  .kpi-table td.center { text-align: center; vertical-align: middle; }
+  .kpi-table td.measures { text-align: left; white-space: pre-wrap; line-height: 1.4; }
+
+  .section-header td {
+    background-color: #f2f2f2;
+    font-weight: bold;
+    font-style: italic;
+    font-size: 8pt;
+  }
+
+  .total-row td {
+    font-weight: bold;
+    background-color: #f9f9f9;
+  }
+
+  .sign-block {
+    margin-top: 8mm;
+    display: flex;
+    justify-content: flex-end;
+    font-size: 9pt;
+  }
+
+  .sign-line {
+    display: flex;
+    gap: 5mm;
+    align-items: flex-end;
+  }
+
+  .sign-underline {
+    border-bottom: 1px solid #000;
+    min-width: 50mm;
+  }
+</style>
+</head>
+<body>
+
+<div class="title-block">
+  <h1>ОТЧЕТ</h1>
+  <h2>о выполнении показателей эффективности и результативности деятельности</h2>
+</div>
+
+<table class="meta-table">
+  <tr>
+    <td>ФИО:</td>
+    <td>{{ employee_full_name }}</td>
+  </tr>
+  <tr>
+    <td>Подразделение:</td>
+    <td>{{ department_name }}</td>
+  </tr>
+  <tr>
+    <td>Должность:</td>
+    <td>{{ role_name }}</td>
+  </tr>
+  <tr>
+    <td>Отчётный период:</td>
+    <td>{{ period_name }}</td>
+  </tr>
+</table>
+
+<table class="kpi-table">
+  <thead>
+    <tr>
+      <th class="col-indicator">Показатели эффективности и результативности деятельности</th>
+      <th class="col-criterion">Критерии оценки эффективности и результативности деятельности</th>
+      <th class="col-plan">Целевые (плановые) значения</th>
+      <th class="col-weight">Доля показателя</th>
+      <th class="col-measures">Мероприятия по выполнению показателя</th>
+      <th class="col-fact">Выполнение целевого значения</th>
+      <th class="col-pct">% выполнения целевого показателя</th>
+      <th class="col-result">Доля показателя (выполнение)</th>
+    </tr>
+  </thead>
+  <tbody>
+
+    {% if specific_kpis %}
+    {% for kpi in specific_kpis %}
+    <tr>
+      {% if loop.first %}
+      <td rowspan="{{ specific_kpis|length }}" style="vertical-align:middle; font-weight:bold;">
+        {{ specific_indicator_name }}
+      </td>
+      {% endif %}
+      <td>{{ kpi.criterion }}</td>
+      <td class="center">{{ kpi.plan_value }}</td>
+      <td class="center">{{ kpi.weight_pct }}</td>
+      <td class="measures">{{ kpi.measures }}</td>
+      <td class="center">{{ kpi.fact_value }}</td>
+      <td class="center">{{ kpi.pct_value }}</td>
+      <td class="center">{{ kpi.result_value }}</td>
+    </tr>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Общие показатели -->
+    <tr class="section-header">
+      <td colspan="8">Общие показатели эффективности и результативности деятельности</td>
+    </tr>
+
+    <!-- Дисциплина -->
+    <tr>
+      <td rowspan="3" style="vertical-align:middle; font-weight:bold;">
+        Общие показатели эффективности и результативности деятельности
+      </td>
+      <td>Соблюдение исполнительской дисциплины при работе в межведомственной системе электронного документооборота Московской области (МСЭД, ЗК МСЭД), сроков исполнения протокольных поручений, образующихся в ходе деятельности Учреждения, сроков исполнения приказов и распоряжений Учреждения, письменных и устных поручений руководства</td>
+      <td class="center">1</td>
+      <td class="center">30%</td>
+      <td class="measures">{{ bin_discipline_summary }}</td>
+      <td class="center">{{ bin_discipline_fact }}</td>
+      <td class="center">{{ bin_discipline_pct }}</td>
+      <td class="center">{{ bin_discipline_result }}</td>
+    </tr>
+
+    <!-- Распорядок -->
+    <tr>
+      <td>Соблюдение Правил внутреннего трудового распорядка, Кодекса этики</td>
+      <td class="center">1</td>
+      <td class="center">10%</td>
+      <td class="measures">{{ bin_schedule_summary }}</td>
+      <td class="center">{{ bin_schedule_fact }}</td>
+      <td class="center">{{ bin_schedule_pct }}</td>
+      <td class="center">{{ bin_schedule_result }}</td>
+    </tr>
+
+    <!-- Охрана труда -->
+    <tr>
+      <td>Соблюдение правил и норм техники безопасности, охраны труда и противопожарного режима</td>
+      <td class="center">1</td>
+      <td class="center">10%</td>
+      <td class="measures">{{ bin_safety_summary }}</td>
+      <td class="center">{{ bin_safety_fact }}</td>
+      <td class="center">{{ bin_safety_pct }}</td>
+      <td class="center">{{ bin_safety_result }}</td>
+    </tr>
+
+    <!-- Итого -->
+    <tr class="total-row">
+      <td colspan="4" style="text-align:right; padding-right:3mm;">
+        Итоговое значение выполнения показателей
+      </td>
+      <td colspan="4" class="center">{{ total_result }}</td>
+    </tr>
+
+    <tr class="total-row">
+      <td colspan="4" style="text-align:right; padding-right:3mm;">
+        Предложение к премированию за отчётный период
+      </td>
+      <td colspan="4" class="center">{{ premium_proposal }}</td>
+    </tr>
+
+  </tbody>
+</table>
+
+<div class="sign-block">
+  <div class="sign-line">
+    <span>{{ reviewer_title }}</span>
+    <span class="sign-underline">&nbsp;</span>
+    <span>{{ reviewer_name }}</span>
+  </div>
+</div>
+
+</body>
+</html>

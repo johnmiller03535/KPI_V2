@@ -338,6 +338,29 @@ export default function KpiFormPage({ params }: { params: Promise<{ submissionId
           )}
         </div>
       )}
+
+      {/* Скачать PDF — только для утверждённых отчётов */}
+      {submission?.status === 'approved' && (
+        <div style={{ marginTop: '1.5rem' }}>
+          <a
+            href={`/api/reports/${submissionId}/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-block',
+              padding: '0.625rem 1.25rem',
+              background: '#7c3aed',
+              color: 'white',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+            }}
+          >
+            Скачать PDF-отчёт
+          </a>
+        </div>
+      )}
     </div>
   )
 }
