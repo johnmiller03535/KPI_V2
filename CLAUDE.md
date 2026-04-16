@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-16 (этап 4)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-16 (этап 7)
 
 ## О проекте
 
@@ -62,9 +62,9 @@ kpi-portal/
 | 2 | Синхронизация с Redmine | ✅ |
 | 3 | Управление периодами (Админ) | ✅ |
 | 4 | KPI-форма сотрудника + Claude API | ✅ |
-| 5 | Дашборд руководителя + утверждение | ⏳ |
-| 6 | Генерация PDF + запись в Redmine | ⏳ |
-| 7 | Система напоминаний | ⏳ |
+| 5 | Дашборд руководителя + утверждение | ✅ |
+| 6 | Генерация PDF + запись в Redmine | ✅ |
+| 7 | Система напоминаний | ✅ |
 | 8 | Telegram-бот (руководители) | ⏳ |
 | 9 | Панель администратора | ⏳ |
 | 10 | Финансовый дашборд | ⏳ |
@@ -127,3 +127,35 @@ kpi-portal/
 ### Frontend
 - `/kpi/{submissionId}` — KPI-форма сотрудника: AI-кнопка, текстовые поля, числовые KPI
 - `/dashboard` — список KPI-отчётов с цветными статус-бейджами и кнопкой «Открыть»
+
+## Этап 7 — Система напоминаний (детали реализации)
+
+### Модели
+- `Notification` — таблица `notifications`: получатель, тип, текст, period_id, submission_id, статус, dedup_key (unique)
+- `NotificationType`: `employee_reminder_3d/1d`, `manager_reminder_3d/1d`, `admin_no_telegram`
+- `NotificationStatus`: `pending`, `sent`, `failed`, `skipped` (нет telegram_id)
+- `dedup_key` формат: `"{type}:{recipient_redmine_id}:{period_id}:{date}"` — гарантирует одно уведомление в день
+
+### Сервис (`ReminderService`)
+- `run_daily_reminders(db)` — итерирует активные периоды; триггерит напоминания при `days_to_submit ∈ {3,1}` и `days_to_review ∈ {3,1}`
+- `_remind_employees` — все `EmployeeStatus.active` у кого нет `submitted`/`approved` отчёта за период
+- `_remind_managers` — группирует `submitted`-отчёты по `evaluator_position_id` (через `subordination_service`), находит руководителя в `employees` по `position_id`
+- `_send_notification` — проверяет `dedup_key`, при нет `telegram_id` → статус `skipped` + WARNING лог, иначе → Telegram API
+- `_notify_admin_missing_telegram` — сводка до 30 имён всем admin-пользователям у которых есть `telegram_id`
+
+### Планировщик
+- Новая задача `daily_reminders` в `scheduler.py`: `CronTrigger(hour=9, minute=0)`, timezone `Europe/Moscow`
+- Рядом с существующей задачей `employee_sync` (воскресенье 02:00 МСК)
+
+### API (`/api/notifications/`) — только admin
+- `POST /run-reminders` — ручной запуск, возвращает stats dict
+- `GET /logs?status=&limit=` — история уведомлений
+- `GET /stats` — счётчики по статусам
+
+### Миграция
+- `f7a8b9c0d1e2` — создаёт таблицу `notifications`, enums `notificationtype` и `notificationstatus`, индексы на `recipient_redmine_id` и `dedup_key`
+- Итого таблиц: 11
+
+### Frontend
+- `/admin/notifications` — страница: статистика по статусам, фильтры, лог уведомлений, кнопка ручного запуска с результатом
+- `/dashboard` — кнопка «Уведомления» (cyan) для роли `admin` рядом с «Управление периодами»
