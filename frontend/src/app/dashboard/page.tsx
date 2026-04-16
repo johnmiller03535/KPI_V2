@@ -83,6 +83,19 @@ export default function DashboardPage() {
             Управление периодами
           </a>
         )}
+        {(user.role === 'manager' || user.role === 'admin') && (
+          <a href="/review" style={{
+            display: 'inline-block',
+            marginTop: '0.5rem',
+            marginLeft: user.role === 'admin' ? '0.5rem' : '0',
+            padding: '0.5rem 1rem',
+            background: '#f59e0b', color: 'white',
+            borderRadius: '6px', textDecoration: 'none',
+            fontSize: '0.875rem',
+          }}>
+            Проверка отчётов
+          </a>
+        )}
       </div>
 
       {/* KPI-отчёты */}
