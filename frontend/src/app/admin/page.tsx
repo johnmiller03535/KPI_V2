@@ -83,7 +83,7 @@ export default function AdminPage() {
     try {
       const [ovRes, perRes, noTgRes, syncRes] = await Promise.all([
         api.get('/admin/overview'),
-        api.get('/periods/'),
+        api.get('/periods'),
         api.get('/admin/employees/no-telegram'),
         api.get('/admin/sync-logs'),
       ])

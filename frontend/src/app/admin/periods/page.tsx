@@ -65,7 +65,7 @@ export default function PeriodsPage() {
 
   async function loadPeriods() {
     try {
-      const res = await api.get('/periods/')
+      const res = await api.get('/periods')
       setPeriods(res.data)
     } catch (e) {
       console.error(e)
@@ -90,7 +90,7 @@ export default function PeriodsPage() {
       if (form.period_type === 'monthly') payload.month = form.month
       if (form.period_type === 'quarterly') payload.quarter = form.quarter
 
-      await api.post('/periods/', payload)
+      await api.post('/periods', payload)
       setShowForm(false)
       await loadPeriods()
     } catch (err: any) {
