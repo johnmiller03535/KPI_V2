@@ -15,13 +15,9 @@ class SubordinationService:
     """
     Читает subordination.json и определяет цепочки подчинения.
 
-    Реальная структура файла:
-    {
-      "evaluator":  {"position_id": "evaluator_position_id" | null, ...},
-      "deputy_for": {"position_id": "deputy_position_id", ...},
-      "ruk_assignments": {...}
-    }
-    Значение null → должность подчиняется директору, вне зоны системы.
+    subordination.json использует unit-коды ('РУК_ПЕР3_001'), а employees.position_id
+    хранит числовой role_id ('1'). _to_unit() конвертирует числовой id → unit через
+    KPI_Mapping перед обращением к картам.
     """
 
     def __init__(self):
@@ -35,8 +31,8 @@ class SubordinationService:
             with open(SUBORDINATION_PATH, "r", encoding="utf-8") as f:
                 self._data = json.load(f)
             self._loaded = True
-            count = len(self._data.get("evaluator", {}))
-            logger.info(f"Subordination загружен: {count} записей в evaluator")
+            count = len(self._data.get("evaluator_map", self._data.get("evaluator", {})))
+            logger.info(f"Subordination загружен: {count} записей в evaluator_map")
         except FileNotFoundError:
             logger.warning(f"subordination.json не найден: {SUBORDINATION_PATH}")
             self._data = {}
@@ -45,26 +41,48 @@ class SubordinationService:
             logger.error(f"Ошибка загрузки subordination.json: {e}")
             self._data = {}
 
+    def _to_unit(self, position_id: str) -> str:
+        """Конвертирует числовой position_id ('4') в unit ('РУК_ЗАМД_004')."""
+        if not position_id or not str(position_id).isdigit():
+            return position_id
+        from app.services.kpi_mapping_service import kpi_mapping_service
+        role_info = kpi_mapping_service.get_role_info(str(position_id))
+        if role_info:
+            return role_info["unit"]
+        return position_id
+
     def get_evaluator_position(self, position_id: str) -> Optional[str]:
-        """Возвращает position_id руководителя. None если директорский уровень."""
+        """Возвращает unit руководителя. None если директорский уровень."""
         self._load()
-        return self._data.get("evaluator", {}).get(position_id)
+        unit = self._to_unit(str(position_id))
+        return self._data.get("evaluator_map", {}).get(unit)
 
     def get_deputy_position(self, position_id: str) -> Optional[str]:
-        """Возвращает position_id заместителя для данной должности."""
+        """Возвращает unit заместителя для данной должности."""
         self._load()
-        return self._data.get("deputy_for", {}).get(position_id)
+        unit = self._to_unit(str(position_id))
+        return self._data.get("deputy_map", {}).get(unit)
 
     def get_subordinates(self, manager_position_id: str) -> list[str]:
-        """Список position_id прямых подчинённых руководителя."""
+        """Список числовых role_id прямых подчинённых руководителя."""
         self._load()
-        return [
-            pos for pos, ev in self._data.get("evaluator", {}).items()
-            if ev == manager_position_id
+        manager_unit = self._to_unit(str(manager_position_id))
+        evaluator_map = self._data.get("evaluator_map", {})
+        subordinate_units = [
+            u for u, evaluator in evaluator_map.items()
+            if evaluator == manager_unit
         ]
+        from app.services.kpi_mapping_service import kpi_mapping_service
+        roles = kpi_mapping_service.get_all_roles()
+        unit_to_num = {r["unit"]: r["role_id"] for r in roles}
+        return [unit_to_num[u] for u in subordinate_units if u in unit_to_num]
 
     def is_manager_of(self, manager_position_id: str, employee_position_id: str) -> bool:
-        return self.get_evaluator_position(employee_position_id) == manager_position_id
+        evaluator = self.get_evaluator_position(str(employee_position_id))
+        if not evaluator:
+            return False
+        manager_unit = self._to_unit(str(manager_position_id))
+        return evaluator == manager_unit
 
 
 subordination_service = SubordinationService()
