@@ -27,5 +27,5 @@ async def get_db() -> AsyncSession:
 # Импорт моделей для Alembic автодискавери
 from app.models import (  # noqa: F401
     user, audit_log, employee, sync_log,
-    period, period_exception, kpi_submission, deputy,
+    period, period_exception, kpi_submission, deputy, notification,
 )
