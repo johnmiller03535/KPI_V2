@@ -92,6 +92,15 @@ export default function DashboardPage() {
             }}>
               Уведомления
             </a>
+            <a href="/admin" style={{
+              display: 'inline-block', marginTop: '1rem', marginLeft: '0.5rem',
+              padding: '0.5rem 1rem',
+              background: '#1e293b', color: 'white',
+              borderRadius: '6px', textDecoration: 'none',
+              fontSize: '0.875rem',
+            }}>
+              ⚙️ Админ-панель
+            </a>
           </>
         )}
         {(user.role === 'manager' || user.role === 'admin') && (
