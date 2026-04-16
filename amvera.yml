@@ -18,14 +18,14 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      # Root context so Dockerfile.prod can access both backend/ and reference/
+      context: .
+      dockerfile: backend/Dockerfile.prod
     restart: unless-stopped
     env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 
   frontend:
     build:

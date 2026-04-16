@@ -31,8 +31,15 @@ class Settings(BaseSettings):
 
     # App
     app_env: str = "development"
-    frontend_url: str = "http://localhost:3000"
+    # Comma-separated list of allowed CORS origins, e.g.:
+    # "http://localhost,http://localhost:3000,https://myapp.amvera.io"
+    frontend_url: str = "http://localhost,http://localhost:3000"
     backend_url: str = "http://localhost:8000"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Список разрешённых CORS origins (разделитель — запятая)."""
+        return [o.strip() for o in self.frontend_url.split(",") if o.strip()]
 
     @property
     def finance_chat_ids(self) -> list[str]:

@@ -30,7 +30,7 @@ class EmployeeResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/", response_model=list[EmployeeResponse])
+@router.get("", response_model=list[EmployeeResponse])
 async def list_employees(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
