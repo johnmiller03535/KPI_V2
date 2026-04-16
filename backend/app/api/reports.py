@@ -1,5 +1,6 @@
 import io
 import logging
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -57,10 +58,11 @@ async def download_pdf(
     emp = emp_res.scalar_one_or_none()
     filename = _pdf_filename(sub, emp)
 
+    filename_encoded = quote(filename)
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"},
     )
 
 
