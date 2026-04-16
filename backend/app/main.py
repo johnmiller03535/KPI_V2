@@ -20,6 +20,7 @@ app = FastAPI(
     title="KPI Portal API",
     description="API для системы KPI-отчётов ГКУ МО «РЦТ»",
     version="1.0.0",
+    redirect_slashes=False,
 )
 
 app.add_middleware(
