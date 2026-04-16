@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Claude
     anthropic_api_key: Optional[str] = None
 
+    # Gemini
+    gemini_api_key: Optional[str] = None
+
     # App
     app_env: str = "development"
     frontend_url: str = "http://localhost:3000"
