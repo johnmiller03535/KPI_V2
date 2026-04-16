@@ -5,10 +5,10 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Автоматически добавляет access_token к запросам и убирает trailing slash
+// Автоматически добавляет access_token к запросам и trailing slash
 api.interceptors.request.use((config) => {
-  if (config.url && config.url.endsWith('/') && config.url !== '/') {
-    config.url = config.url.slice(0, -1)
+  if (config.url && !config.url.endsWith('/') && !config.url.includes('?')) {
+    config.url = config.url + '/'
   }
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('access_token')
