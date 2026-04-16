@@ -116,6 +116,17 @@ export default function DashboardPage() {
             Проверка отчётов
           </a>
         )}
+        {(user.role === 'finance' || user.role === 'admin') && (
+          <a href="/finance" style={{
+            display: 'inline-block', marginTop: '0.5rem', marginLeft: '0.5rem',
+            padding: '0.5rem 1rem',
+            background: '#059669', color: 'white',
+            borderRadius: '6px', textDecoration: 'none',
+            fontSize: '0.875rem',
+          }}>
+            💰 Финансовый дашборд
+          </a>
+        )}
       </div>
 
       {/* KPI-отчёты */}
