@@ -253,11 +253,14 @@ async def _notify_manager_about_submission(
     """Отправляет руководителю уведомление с кнопками approve/reject."""
     from app.services.subordination_service import subordination_service
     from app.services.kpi_mapping_service import kpi_mapping_service
-    from app.bot.bot import bot
+    from app.bot.bot import get_bot
     from app.bot.keyboards import review_keyboard
     from app.config import settings
 
     if not settings.telegram_bot_token:
+        return
+    bot = get_bot()
+    if not bot:
         return
 
     # Найти сотрудника
