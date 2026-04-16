@@ -88,6 +88,24 @@ export default function ReviewDetailPage({
   if (loading) return <div style={s.page}><p style={{ color: '#64748b' }}>Загрузка...</p></div>
   if (!submission) return <div style={s.page}><p>Отчёт не найден</p></div>
 
+  async function downloadPdf(label: string) {
+    const token = localStorage.getItem('access_token')
+    const res = await fetch(`/api/reports/${submissionId}/pdf`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    })
+    if (res.ok) {
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `KPI_${submission!.employee_full_name}_${submission!.period_name}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } else {
+      alert('Ошибка генерации PDF')
+    }
+  }
+
   const canDecide = submission.status === 'submitted'
 
   return (
@@ -171,18 +189,16 @@ export default function ReviewDetailPage({
             <button style={{ ...s.btnRed, opacity: deciding ? 0.6 : 1 }} onClick={() => handleDecide(false)} disabled={deciding}>
               Вернуть на доработку
             </button>
-            <a
-              href={`/api/reports/${submissionId}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => downloadPdf('preview')}
               style={{
-                display: 'inline-block', padding: '0.625rem 1.25rem',
-                background: '#64748b', color: 'white', borderRadius: '6px',
-                textDecoration: 'none', fontSize: '0.875rem',
+                padding: '0.625rem 1.25rem',
+                background: '#64748b', color: 'white', border: 'none',
+                borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem',
               }}
             >
-              Предпросмотр PDF
-            </a>
+              📄 Предпросмотр PDF
+            </button>
           </div>
         </div>
       ) : (
@@ -191,17 +207,16 @@ export default function ReviewDetailPage({
             Статус: <strong>{STATUS_LABELS[submission.status] || submission.status}</strong>
           </span>
           {submission.status === 'approved' && (
-            <a
-              href={`/api/reports/${submissionId}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={() => downloadPdf('download')}
               style={{
                 padding: '0.5rem 1rem', background: '#7c3aed', color: 'white',
-                borderRadius: '6px', textDecoration: 'none', fontSize: '0.875rem', fontWeight: 600,
+                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                fontSize: '0.875rem', fontWeight: 600,
               }}
             >
-              Скачать PDF
-            </a>
+              📄 Скачать PDF
+            </button>
           )}
         </div>
       )}
