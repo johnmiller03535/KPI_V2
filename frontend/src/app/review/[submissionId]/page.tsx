@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
@@ -37,9 +37,9 @@ const STATUS_LABELS: Record<string, string> = {
 export default function ReviewDetailPage({
   params,
 }: {
-  params: Promise<{ submissionId: string }>
+  params: { submissionId: string }
 }) {
-  const { submissionId } = use(params)
+  const { submissionId } = params
   const router = useRouter()
   const [submission, setSubmission] = useState<Submission | null>(null)
   const [loading, setLoading] = useState(true)

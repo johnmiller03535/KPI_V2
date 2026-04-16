@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
@@ -58,8 +58,8 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
   rejected:  { bg: '#fee2e2', color: '#991b1b' },
 }
 
-export default function KpiFormPage({ params }: { params: Promise<{ submissionId: string }> }) {
-  const { submissionId } = use(params)
+export default function KpiFormPage({ params }: { params: { submissionId: string } }) {
+  const { submissionId } = params
   const router = useRouter()
   const [submission, setSubmission] = useState<Submission | null>(null)
   const [structure, setStructure] = useState<KpiStructure | null>(null)
