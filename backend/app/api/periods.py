@@ -36,7 +36,7 @@ def _period_to_response(p: Period) -> PeriodResponse:
     )
 
 
-@router.post("/", response_model=PeriodResponse)
+@router.post("", response_model=PeriodResponse)
 async def create_period(
     body: PeriodCreate,
     db: AsyncSession = Depends(get_db),
@@ -62,7 +62,7 @@ async def create_period(
     return _period_to_response(period)
 
 
-@router.get("/", response_model=list[PeriodResponse])
+@router.get("", response_model=list[PeriodResponse])
 async def list_periods(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
