@@ -46,6 +46,30 @@ class SubmissionResponse(BaseModel):
         from_attributes = True
 
 
+class NumericFactInput(BaseModel):
+    fact_value: float
+
+
+class BinaryManualOverride(BaseModel):
+    note: Optional[str] = None
+    score: Optional[float] = None  # 0 или 100
+
+
+class SubmissionNumericUpdate(BaseModel):
+    """Ввод фактических значений числовых KPI и комментариев к бинарным."""
+    numeric_values: Optional[dict[str, NumericFactInput]] = None      # criterion → fact
+    binary_manual_overrides: Optional[dict[str, BinaryManualOverride]] = None  # criterion → override
+
+
+class ScoreResponse(BaseModel):
+    submission_id: str
+    partial_score: Optional[float]
+    total_weight: int
+    scored_weight: int
+    completion_pct: float
+    status: str
+
+
 class AISummaryResponse(BaseModel):
     criteria: dict
     general_summary: str

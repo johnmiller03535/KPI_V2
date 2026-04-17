@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Optional
 
 
 KpiFormulaType = Literal[
@@ -34,3 +34,39 @@ class KpiStructure(BaseModel):
     binary_manual: list[KpiItem]
     numeric: list[KpiItem]
     total_weight: int
+
+
+class KpiResult(BaseModel):
+    # Идентификация
+    indicator: str
+    criterion: str
+    formula_type: str
+    weight: int
+    is_common: bool
+    cumulative: bool
+    kpi_type: str
+
+    # Результат оценки
+    score: Optional[float] = None       # 0.0–100.0 или None если не оценено
+    confidence: Optional[int] = None    # 0–100, только для binary_auto
+    summary: Optional[str] = None       # AI-текст, только для binary_auto
+
+    # Флаги состояния
+    awaiting_manual_input: bool = False  # binary_manual без оценки
+    requires_fact_input: bool = False    # numeric без введённого факта
+    fact_value: Optional[float] = None   # введённый сотрудником факт
+    parsed_thresholds: Optional[list[dict]] = None  # для numeric KPI
+    requires_review: bool = False        # confidence < 80
+
+
+class KpiEngineResult(BaseModel):
+    kpi_results: list[KpiResult]
+
+    # Итоговые метрики
+    partial_score: Optional[float] = None  # взвешенный % по оценённым KPI
+    total_weight: int
+    scored_weight: int
+    completion_pct: float
+
+    # Системные флаги
+    system_flags: dict

@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (шаг A: AI + KPI refactor)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (шаг B: KpiEngineService + обновлённые эндпоинты)
 
 ## О проекте
 
@@ -250,6 +250,32 @@ kpi-portal/
 - Поддерживает: `threshold`, `multi_threshold`, `quarterly_threshold`
 - `backend/tests/test_threshold_parser.py` — 17 unit-тестов, все зелёные
 
+## Шаг B — KpiEngineService + обновлённые эндпоинты (2026-04-17)
+
+### ИЗМЕНЕНИЕ 1 — KpiEngineService (новый файл)
+- `backend/app/services/kpi_engine_service.py` — главный оркестратор обработки KPI-отчёта
+- 10 шагов: загрузка sub → period → трудозатраты Redmine → KPI-структура → параллельная AI-оценка (`asyncio.gather`) → binary_manual разметка → numeric разметка → общее саммари → сохранение в БД → возврат `KpiEngineResult`
+- Сохраняет в: `kpi_values` (JSON-список), `ai_raw_summary`, `ai_generated_at`
+- `system_flags`: `{partial_result, requires_review: [...], awaiting_manual: N, requires_fact: N, time_entries_count: N}`
+- `compute_score_from_kpi_values(kpi_values)` — пересчёт без обращения к БД
+
+### ИЗМЕНЕНИЕ 2 — Новые схемы в kpi.py
+- `KpiResult` — результат оценки одного KPI: score, confidence, summary, awaiting_manual_input, requires_fact_input, fact_value, parsed_thresholds, requires_review
+- `KpiEngineResult` — итог всей обработки: kpi_results[], partial_score, total_weight, scored_weight, completion_pct, system_flags
+
+### ИЗМЕНЕНИЕ 3 — Обновлённые эндпоинты kpi_submissions.py
+- `POST /api/submissions/my/{id}/generate-summary` → теперь вызывает `KpiEngineService.process_submission()`, возвращает `KpiEngineResult`
+- `GET /api/submissions/my/{id}/score` (новый) → возвращает `ScoreResponse` из сохранённых kpi_values
+- `PATCH /api/submissions/my/{id}` → принимает `SubmissionNumericUpdate`:
+  - `numeric_values: dict[str, {fact_value}]` — записывает факт + вычисляет score через `apply_threshold(parsed_thresholds)`
+  - `binary_manual_overrides: dict[str, {score, note}]` — записывает score руководителя
+  - Использует `flag_modified(sub, "kpi_values")` для надёжного обновления JSON-колонки
+
+### Проверено в тестах
+- `POST /generate-summary`: 65 трудозатрат, 4 binary_auto + 2 binary_manual, completion_pct=80%
+- `GET /score`: возвращает partial_score=100.0, total_weight=100, scored_weight=80
+- `PATCH` с binary_manual_override: score обновляется, awaiting_manual_input=False, completion_pct → 90%
+
 ## Сессия 2026-04-17 — Тестирование и исправления
 
 ### Исправленные баги
@@ -287,7 +313,7 @@ kpi-portal/
 - `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `JWT_SECRET_KEY` — минимум 32 символа, случайная строка
 - `TELEGRAM_BOT_TOKEN` — токен бота (`redmine_monitor_bot`)
-- `GIGACHAT_API_KEY` — Authorization Data из кабинета GigaChat (base64, основной AI)
+- `OPENAI_API_KEY` — ключ OpenAI (GPT-4o-mini, основной AI)
 - `GEMINI_API_KEY` — ключ Gemini (резервный AI)
 - `ANTHROPIC_API_KEY` — ключ Claude API (не используется, опционально)
 - `FINANCE_TELEGRAM_IDS` — chat_id финансового блока через запятую

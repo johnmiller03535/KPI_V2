@@ -1,4 +1,3 @@
-import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional
@@ -7,18 +6,21 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_db
 from app.core.deps import get_current_user
 from app.core.redmine import redmine_client
 from app.models.user import User
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
-from app.models.period import Period
 from app.models.employee import Employee
-from app.services.ai_service import ai_service
 from app.services.kpi_mapping_service import kpi_mapping_service
+from app.services.kpi_engine_service import kpi_engine_service
+from app.services.threshold_parser import ThresholdRule, apply_threshold
+from app.schemas.kpi import KpiEngineResult
 from app.schemas.kpi_submission import (
-    SubmissionDraftUpdate, SubmissionResponse, AISummaryResponse,
+    SubmissionResponse,
+    SubmissionNumericUpdate, ScoreResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,16 +83,20 @@ async def get_my_submission(
     return _to_response(sub)
 
 
-@router.post("/my/{submission_id}/generate-summary", response_model=AISummaryResponse)
+@router.post("/my/{submission_id}/generate-summary", response_model=KpiEngineResult)
 async def generate_ai_summary(
     submission_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Запрашивает трудозатраты из Redmine и генерирует AI-саммари через Claude API.
-    Сохраняет результат в submission.
+    Запускает полную AI-обработку KPI-отчёта:
+    - Получает трудозатраты из Redmine
+    - Параллельно оценивает binary_auto KPI через AI
+    - Размечает binary_manual и numeric KPI
+    - Сохраняет результаты в submission.kpi_values
     """
+    # Проверяем права доступа
     result = await db.execute(
         select(KpiSubmission).where(
             KpiSubmission.id == submission_id,
@@ -103,75 +109,67 @@ async def generate_ai_summary(
     if sub.status not in [SubmissionStatus.draft, SubmissionStatus.rejected]:
         raise HTTPException(status_code=400, detail="Нельзя редактировать отчёт в текущем статусе")
 
-    # Получить период
-    period_result = await db.execute(select(Period).where(Period.id == sub.period_id))
-    period = period_result.scalar_one_or_none()
-    if not period:
-        raise HTTPException(status_code=404, detail="Период не найден")
+    return await kpi_engine_service.process_submission(submission_id, db)
 
-    # Получить трудозатраты из Redmine
-    time_entries = await redmine_client.get_time_entries(
-        user_id=int(current_user.redmine_id),
-        date_from=str(period.date_start),
-        date_to=str(period.date_end),
+
+@router.get("/my/{submission_id}/score", response_model=ScoreResponse)
+async def get_submission_score(
+    submission_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Возвращает текущий partial_score из сохранённых kpi_values."""
+    result = await db.execute(
+        select(KpiSubmission).where(
+            KpiSubmission.id == submission_id,
+            KpiSubmission.employee_redmine_id == current_user.redmine_id,
+        )
     )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
 
-    # Получить KPI-критерии для должности
-    binary_criteria = []
-    if sub.position_id:
-        binary_criteria = kpi_mapping_service.get_binary_auto_criteria(sub.position_id)
+    if not sub.kpi_values:
+        return ScoreResponse(
+            submission_id=submission_id,
+            partial_score=None,
+            total_weight=0,
+            scored_weight=0,
+            completion_pct=0.0,
+            status=sub.status,
+        )
 
-    # Если критериев нет — используем стандартные
-    if not binary_criteria:
-        binary_criteria = [
-            "Выполнение должностных обязанностей",
-            "Исполнение поручений руководства",
-        ]
-
-    # Получить имя сотрудника
-    emp_result = await db.execute(
-        select(Employee).where(Employee.redmine_id == current_user.redmine_id)
+    partial_score, total_weight, scored_weight = kpi_engine_service.compute_score_from_kpi_values(
+        sub.kpi_values
     )
-    employee = emp_result.scalar_one_or_none()
-    employee_name = employee.full_name if employee else current_user.login
+    completion_pct = round(scored_weight / total_weight * 100, 1) if total_weight > 0 else 0.0
 
-    # Генерация AI-саммари
-    ai_result = await ai_service.summarize_time_entries(
-        employee_name=employee_name,
-        period_name=period.name,
-        time_entries=time_entries,
-        kpi_criteria=binary_criteria,
-    )
-
-    if not ai_result:
-        raise HTTPException(status_code=500, detail="Ошибка генерации AI-саммари")
-
-    # Сохранить в submission
-    sub.ai_raw_summary = json.dumps(ai_result, ensure_ascii=False)
-    sub.ai_generated_at = datetime.now(timezone.utc)
-
-    # Заполнить discipline_summary из AI если поле пустое
-    if not sub.bin_discipline_summary:
-        sub.bin_discipline_summary = ai_result.get("discipline_summary", "")
-
-    await db.commit()
-
-    return AISummaryResponse(
-        criteria=ai_result.get("criteria", {}),
-        general_summary=ai_result.get("general_summary", ""),
-        discipline_summary=ai_result.get("discipline_summary", ""),
-        time_entries_count=len(time_entries),
+    return ScoreResponse(
+        submission_id=submission_id,
+        partial_score=partial_score,
+        total_weight=total_weight,
+        scored_weight=scored_weight,
+        completion_pct=completion_pct,
+        status=sub.status,
     )
 
 
 @router.patch("/my/{submission_id}", response_model=SubmissionResponse)
 async def update_submission_draft(
     submission_id: str,
-    body: SubmissionDraftUpdate,
+    body: SubmissionNumericUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Сохранить черновик KPI-отчёта (частичное обновление)."""
+    """
+    Обновляет числовые факты и manual-оценки в kpi_values, пересчитывает partial_score.
+
+    Тело:
+    {
+      "numeric_values": {"<criterion>": {"fact_value": 92.5}},
+      "binary_manual_overrides": {"<criterion>": {"score": 100, "note": "..."}}
+    }
+    """
     result = await db.execute(
         select(KpiSubmission).where(
             KpiSubmission.id == submission_id,
@@ -184,15 +182,44 @@ async def update_submission_draft(
     if sub.status not in [SubmissionStatus.draft, SubmissionStatus.rejected]:
         raise HTTPException(status_code=400, detail="Нельзя редактировать в текущем статусе")
 
-    if body.bin_discipline_summary is not None:
-        sub.bin_discipline_summary = body.bin_discipline_summary
-    if body.bin_schedule_summary is not None:
-        sub.bin_schedule_summary = body.bin_schedule_summary
-    if body.bin_safety_summary is not None:
-        sub.bin_safety_summary = body.bin_safety_summary
-    if body.kpi_values is not None:
-        sub.kpi_values = [v.model_dump() for v in body.kpi_values]
+    kpi_values: list[dict] = list(sub.kpi_values) if sub.kpi_values else []
 
+    # Применяем числовые значения
+    if body.numeric_values:
+        for item in kpi_values:
+            criterion = item.get("criterion", "")
+            if criterion in body.numeric_values:
+                fact_input = body.numeric_values[criterion]
+                fact_value = fact_input.fact_value
+                item["fact_value"] = fact_value
+                item["requires_fact_input"] = False
+
+                # Вычисляем score через ThresholdParser (из сохранённых parsed_thresholds)
+                try:
+                    raw_rules = item.get("parsed_thresholds") or []
+                    rules = [ThresholdRule(**r) for r in raw_rules]
+                    if rules:
+                        item["score"] = apply_threshold(fact_value, rules)
+                    else:
+                        item["score"] = None
+                except Exception as e:
+                    logger.warning(f"Ошибка расчёта порога для '{criterion[:40]}': {e}")
+                    item["score"] = None
+
+    # Применяем manual-оценки
+    if body.binary_manual_overrides:
+        for item in kpi_values:
+            criterion = item.get("criterion", "")
+            if criterion in body.binary_manual_overrides:
+                override = body.binary_manual_overrides[criterion]
+                if override.score is not None:
+                    item["score"] = override.score
+                    item["awaiting_manual_input"] = False
+                if override.note is not None:
+                    item["summary"] = override.note
+
+    sub.kpi_values = kpi_values
+    flag_modified(sub, "kpi_values")
     await db.commit()
     await db.refresh(sub)
     return _to_response(sub)
