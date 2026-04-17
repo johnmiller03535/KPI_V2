@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (тестирование + фиксы)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (шаг A: AI + KPI refactor)
 
 ## О проекте
 
@@ -224,6 +224,31 @@ kpi-portal/
 
 ### Оптимизация
 - Сотрудники загружаются одним запросом (`redmine_id.in_(...)`) вместо N запросов в цикле
+
+## Шаг A — AI-провайдер + KPI-рефакторинг (2026-04-17)
+
+### ИЗМЕНЕНИЕ 1 — AI-провайдер: OpenAI → Gemini → заглушка
+- `backend/app/services/ai_service.py` — два провайдера: OpenAI GPT-4o-mini (primary), Gemini 1.5 Flash (fallback)
+- Новый метод `evaluate_binary_kpi(time_entries, criterion, formula_desc) → {score, summary, confidence}`
+- `summarize_time_entries` сохранён для обратной совместимости, использует ту же цепочку провайдеров
+- `backend/app/config.py` — добавлено поле `openai_api_key: str = ""`; удалено `gigachat_api_key`
+- `backend/requirements.txt` — добавлен `openai>=1.0.0`
+
+### ИЗМЕНЕНИЕ 2 — KpiMappingService: правильные formula_type
+- `backend/app/schemas/kpi.py` — новые схемы `KpiItem` и `KpiStructure` (три группы: binary_auto / binary_manual / numeric)
+- `backend/app/services/kpi_mapping_service.py` — полная перепись:
+  - Реальные formula_type: `binary_auto`, `binary_manual`, `threshold`, `multi_threshold`, `quarterly_threshold`
+  - `get_kpi_structure(role_id)` → `KpiStructure` с тремя группами
+  - `get_kpi_structure_by_pos_id(pos_id)` — поиск по числовому pos_id из employees.position_id
+  - `pos_id_to_role_id(pos_id)` — конвертация pos_id → role_id
+  - Обратная совместимость: `get_binary_auto_criteria`, `get_numeric_kpis`, `get_kpi_for_role`
+- **Важно:** `employees.position_id` хранит числовой `pos_id` (например `"4"`), а не `role_id` (`"РУК_ЗАМД_004"`) — используй `get_kpi_structure_by_pos_id` при работе с сотрудниками
+- `GET /api/submissions/my/{id}/kpi-structure` — теперь возвращает `{role_id, binary_auto[], binary_manual[], numeric[], total_weight, role_info}`
+
+### ИЗМЕНЕНИЕ 3 — ThresholdParser
+- `backend/app/services/threshold_parser.py` — парсер строк вида `">=67%→100% | <67%,>50%→50% | <50%→0%"`
+- Поддерживает: `threshold`, `multi_threshold`, `quarterly_threshold`
+- `backend/tests/test_threshold_parser.py` — 17 unit-тестов, все зелёные
 
 ## Сессия 2026-04-17 — Тестирование и исправления
 

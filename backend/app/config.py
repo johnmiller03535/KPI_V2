@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # Gemini
     gemini_api_key: Optional[str] = None
 
-    # GigaChat
-    gigachat_api_key: Optional[str] = None
+    # OpenAI
+    openai_api_key: str = ""
 
     # App
     app_env: str = "development"

@@ -318,7 +318,7 @@ async def get_kpi_structure(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Возвращает KPI-структуру для должности сотрудника из KPI_Mapping.xlsx."""
+    """Возвращает KPI-структуру для должности сотрудника (три группы)."""
     result = await db.execute(
         select(KpiSubmission).where(
             KpiSubmission.id == submission_id,
@@ -329,19 +329,17 @@ async def get_kpi_structure(
     if not sub:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
 
-    position_id = sub.position_id
-    if not position_id:
-        return {"position_id": None, "role_info": None, "kpi_items": [], "numeric_kpis": [], "binary_auto_criteria": []}
+    pos_id = sub.position_id
+    if not pos_id:
+        from app.schemas.kpi import KpiStructure
+        return {**KpiStructure(
+            role_id="", binary_auto=[], binary_manual=[], numeric=[], total_weight=0
+        ).model_dump(), "role_info": None}
 
-    role_info = kpi_mapping_service.get_role_info(position_id)
-    all_kpis = kpi_mapping_service.get_kpi_for_role(position_id)
-    numeric_kpis = kpi_mapping_service.get_numeric_kpis(position_id)
-    binary_criteria = kpi_mapping_service.get_binary_auto_criteria(position_id)
+    structure = kpi_mapping_service.get_kpi_structure_by_pos_id(pos_id)
+    role_info = kpi_mapping_service.get_role_info(pos_id)
 
     return {
-        "position_id": position_id,
+        **structure.model_dump(),
         "role_info": role_info,
-        "kpi_items": all_kpis,
-        "numeric_kpis": numeric_kpis,
-        "binary_auto_criteria": binary_criteria,
     }
