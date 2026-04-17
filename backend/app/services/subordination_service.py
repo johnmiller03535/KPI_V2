@@ -42,13 +42,14 @@ class SubordinationService:
             self._data = {}
 
     def _to_unit(self, position_id: str) -> str:
-        """Конвертирует числовой position_id ('4') в unit ('РУК_ЗАМД_004')."""
+        """Конвертирует числовой position_id ('4') → role_id ('РУК_ЗАМД_004').
+        subordination.json использует role_id в качестве ключей."""
         if not position_id or not str(position_id).isdigit():
             return position_id
         from app.services.kpi_mapping_service import kpi_mapping_service
         role_info = kpi_mapping_service.get_role_info(str(position_id))
         if role_info:
-            return role_info["unit"]
+            return role_info["role_id"]
         return position_id
 
     def get_evaluator_position(self, position_id: str) -> Optional[str]:
@@ -64,18 +65,16 @@ class SubordinationService:
         return self._data.get("deputy_for", {}).get(unit)
 
     def get_subordinates(self, manager_position_id: str) -> list[str]:
-        """Список числовых role_id прямых подчинённых руководителя."""
+        """Список role_id прямых подчинённых руководителя.
+        Возвращает role_id строки ('ЦТР_НАЧ_071') — в review.py они
+        конвертируются в pos_id через kpi_mapping_service."""
         self._load()
         manager_unit = self._to_unit(str(manager_position_id))
         evaluator_map = self._data.get("evaluator", {})
-        subordinate_units = [
+        return [
             u for u, evaluator in evaluator_map.items()
             if evaluator == manager_unit
         ]
-        from app.services.kpi_mapping_service import kpi_mapping_service
-        roles = kpi_mapping_service.get_all_roles()
-        unit_to_num = {r["unit"]: r["role_id"] for r in roles}
-        return [unit_to_num[u] for u in subordinate_units if u in unit_to_num]
 
     def is_manager_of(self, manager_position_id: str, employee_position_id: str) -> bool:
         evaluator = self.get_evaluator_position(str(employee_position_id))

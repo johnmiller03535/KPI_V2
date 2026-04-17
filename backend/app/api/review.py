@@ -3,6 +3,7 @@ from datetime import datetime, timezone, date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.orm.attributes import flag_modified
 from typing import Optional
 
 from app.database import get_db
@@ -11,13 +12,17 @@ from app.config import settings
 from app.models.user import User
 from app.models.employee import Employee
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
+from app.models.audit_log import AuditLog
 from app.models.deputy import DeputyAssignment
 from app.services.subordination_service import subordination_service
 from app.services.kpi_mapping_service import kpi_mapping_service
+from app.services.kpi_engine_service import kpi_engine_service
 from app.schemas.review import (
     ReviewDecision, SubmissionForReview,
     DeputyAssignmentCreate, DeputyAssignmentResponse,
 )
+from app.schemas.kpi import BinaryManualUpdate, PendingManualResponse
+from app.schemas.kpi_submission import ScoreResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/review", tags=["review"])
@@ -35,13 +40,24 @@ async def _get_manager_position_id(current_user: User, db: AsyncSession) -> Opti
     return emp.position_id if emp else None
 
 
+def _role_ids_to_pos_ids(role_ids: list[str]) -> list[str]:
+    """Конвертирует role_id ('ЦТР_НАЧ_071') → числовой pos_id ('71')."""
+    result = []
+    for rid in role_ids:
+        info = kpi_mapping_service.get_role_info(rid)
+        if info:
+            result.append(str(info["pos_id"]))
+    return result
+
+
 async def _get_effective_subordinate_ids(current_user: User, db: AsyncSession) -> list[str]:
     """redmine_id подчинённых, чьи отчёты может проверять текущий пользователь."""
     manager_position_id = await _get_manager_position_id(current_user, db)
     if not manager_position_id:
         return []
 
-    subordinate_positions = subordination_service.get_subordinates(manager_position_id)
+    # get_subordinates возвращает role_ids → конвертируем в pos_ids
+    subordinate_role_ids = subordination_service.get_subordinates(manager_position_id)
 
     # Добавить подчинённых замещаемых руководителей
     deputy_result = await db.execute(
@@ -56,16 +72,17 @@ async def _get_effective_subordinate_ids(current_user: User, db: AsyncSession) -
     )
     for da in deputy_result.scalars().all():
         if da.manager_position_id:
-            subordinate_positions.extend(
+            subordinate_role_ids.extend(
                 subordination_service.get_subordinates(da.manager_position_id)
             )
 
-    if not subordinate_positions:
+    subordinate_pos_ids = _role_ids_to_pos_ids(subordinate_role_ids)
+    if not subordinate_pos_ids:
         return []
 
     emp_result = await db.execute(
         select(Employee).where(
-            Employee.position_id.in_(subordinate_positions),
+            Employee.position_id.in_(subordinate_pos_ids),
             Employee.is_active == True,
         )
     )
@@ -225,10 +242,12 @@ async def get_my_team(
     if not manager_position_id:
         return {"manager_position_id": None, "team_count": 0, "team": []}
 
-    subordinate_positions = subordination_service.get_subordinates(manager_position_id)
+    subordinate_pos_ids = _role_ids_to_pos_ids(
+        subordination_service.get_subordinates(manager_position_id)
+    )
     emp_result = await db.execute(
         select(Employee).where(
-            Employee.position_id.in_(subordinate_positions),
+            Employee.position_id.in_(subordinate_pos_ids),
             Employee.is_active == True,
         )
     )
@@ -245,6 +264,130 @@ async def get_my_team(
         })
 
     return {"manager_position_id": manager_position_id, "team_count": len(team), "team": team}
+
+
+# ---------------------------------------------------------------------------
+# binary_manual оценка
+# ---------------------------------------------------------------------------
+
+@router.get("/{submission_id}/pending-manual", response_model=PendingManualResponse)
+async def get_pending_manual(
+    submission_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Список binary_manual KPI, ожидающих оценки руководителя."""
+    subordinate_ids = await _get_effective_subordinate_ids(current_user, db)
+
+    result = await db.execute(
+        select(KpiSubmission).where(KpiSubmission.id == submission_id)
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+    if sub.employee_redmine_id not in subordinate_ids:
+        raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
+
+    emp_res = await db.execute(
+        select(Employee).where(Employee.redmine_id == sub.employee_redmine_id)
+    )
+    emp = emp_res.scalar_one_or_none()
+    employee_name = emp.full_name if emp else sub.employee_login
+
+    kpi_values: list[dict] = sub.kpi_values or []
+    pending_items = []
+    for idx, item in enumerate(kpi_values):
+        if item.get("kpi_type") == "binary_manual" and item.get("awaiting_manual_input", False):
+            pending_items.append({
+                "index": idx,
+                "indicator": item.get("indicator", ""),
+                "criterion": item.get("criterion", ""),
+                "weight": item.get("weight", 0),
+                "is_common": item.get("is_common", False),
+            })
+
+    return PendingManualResponse(
+        submission_id=submission_id,
+        employee_name=employee_name,
+        pending_count=len(pending_items),
+        pending_items=pending_items,
+    )
+
+
+@router.patch("/{submission_id}/binary-manual", response_model=ScoreResponse)
+async def score_binary_manual(
+    submission_id: str,
+    body: BinaryManualUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Выставить оценку binary_manual KPI (0 или 100)."""
+    # Проверка score
+    if body.score not in (0, 100):
+        raise HTTPException(status_code=422, detail="score должен быть 0 или 100")
+
+    subordinate_ids = await _get_effective_subordinate_ids(current_user, db)
+
+    result = await db.execute(
+        select(KpiSubmission).where(KpiSubmission.id == submission_id)
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+    if sub.employee_redmine_id not in subordinate_ids:
+        raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
+    if sub.status in (SubmissionStatus.approved, SubmissionStatus.rejected):
+        raise HTTPException(status_code=409, detail="Отчёт уже обработан")
+    if sub.status != SubmissionStatus.submitted:
+        raise HTTPException(status_code=400, detail="Отчёт не находится на проверке")
+
+    kpi_values: list[dict] = list(sub.kpi_values) if sub.kpi_values else []
+
+    if body.kpi_index < 0 or body.kpi_index >= len(kpi_values):
+        raise HTTPException(status_code=400, detail="Неверный kpi_index")
+
+    item = kpi_values[body.kpi_index]
+    if item.get("kpi_type") != "binary_manual":
+        raise HTTPException(status_code=400, detail="Этот KPI не является binary_manual")
+
+    item["score"] = float(body.score)
+    item["awaiting_manual_input"] = False
+    item["reviewer_comment"] = body.comment
+    item["reviewed_at"] = datetime.utcnow().isoformat()
+
+    sub.kpi_values = kpi_values
+    flag_modified(sub, "kpi_values")
+    await db.commit()
+
+    # Аудит
+    audit = AuditLog(
+        user_id=current_user.redmine_id,
+        user_login=current_user.login,
+        action="binary_manual_scored",
+        details={
+            "submission_id": submission_id,
+            "kpi_index": body.kpi_index,
+            "score": body.score,
+            "criterion": item.get("criterion", "")[:80],
+        },
+    )
+    db.add(audit)
+    await db.commit()
+
+    # Пересчёт partial_score
+    partial_score, total_weight, scored_weight = kpi_engine_service.compute_score_from_kpi_values(
+        sub.kpi_values
+    )
+    completion_pct = round(scored_weight / total_weight * 100, 1) if total_weight > 0 else 0.0
+
+    return ScoreResponse(
+        submission_id=submission_id,
+        partial_score=partial_score,
+        total_weight=total_weight,
+        scored_weight=scored_weight,
+        completion_pct=completion_pct,
+        status=sub.status,
+    )
 
 
 # ---------------------------------------------------------------------------

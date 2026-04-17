@@ -70,3 +70,16 @@ class KpiEngineResult(BaseModel):
 
     # Системные флаги
     system_flags: dict
+
+
+class BinaryManualUpdate(BaseModel):
+    kpi_index: int
+    score: int       # допустимые значения: 0 или 100 (проверяется в endpoint)
+    comment: str = ""
+
+
+class PendingManualResponse(BaseModel):
+    submission_id: str
+    employee_name: str
+    pending_count: int
+    pending_items: list[dict]

@@ -1,3 +1,5 @@
+import '@/styles/cyber.css'
+
 export const metadata = {
   title: 'KPI Портал — ГКУ МО «РЦТ»',
   description: 'Система KPI-отчётов',
