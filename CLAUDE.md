@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-16 (этап 8)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (тестирование + фиксы)
 
 ## О проекте
 
@@ -20,7 +20,7 @@
 | Бот | aiogram 3 |
 | Планировщик | APScheduler |
 | PDF | WeasyPrint |
-| AI | Claude API (claude-sonnet) |
+| AI | GigaChat (основной) / Gemini (резервный) |
 | Контейнеры | Docker Compose |
 | Авторизация | JWT + Redmine API (единая учётка) |
 
@@ -105,7 +105,7 @@ kpi-portal/
 - `KpiSubmission` — таблица `kpi_submissions`: employee+period+position_id, статус, бинарные поля, kpi_values JSON, AI-поля, reviewer-поля
 
 ### Сервисы
-- `AIService.summarize_time_entries` — Claude API (`claude-sonnet-4-6`), промт → JSON с criteria/general_summary/discipline_summary; заглушка при пустых трудозатратах
+- `AIService.summarize_time_entries` — провайдеры с приоритетом: GigaChat → Gemini → заглушка; промт → JSON с criteria/general_summary/discipline_summary; заглушка при пустых трудозатратах
 - `KpiMappingService` — читает KPI_Mapping.xlsx (openpyxl); 91 должность, 478 индикаторов
   - `get_binary_auto_criteria(role_id)` → `formula_type == "100%"` (бинарные, AI-описание)
   - `get_numeric_kpis(role_id)` → `formula_type != "100%"` (пороговые, ввод вручную)
@@ -225,14 +225,46 @@ kpi-portal/
 ### Оптимизация
 - Сотрудники загружаются одним запросом (`redmine_id.in_(...)`) вместо N запросов в цикле
 
+## Сессия 2026-04-17 — Тестирование и исправления
+
+### Исправленные баги
+
+#### Критический: `create-tasks` не создавал локальные `kpi_submissions`
+- **Файл:** `backend/app/services/period_service.py`
+- **Проблема:** `create_redmine_tasks` создавал задачи в Redmine, но не создавал записи `KpiSubmission` в локальной БД → дашборд сотрудника всегда показывал "Нет отчётов", KPI-форма была недоступна
+- **Исправление:** после успешного создания Redmine-задачи теперь создаётся `KpiSubmission(status=draft)` с `redmine_issue_id`
+
+#### Новый admin-эндпоинт для восстановления данных
+- **Файл:** `backend/app/api/admin.py`
+- `POST /api/admin/periods/{id}/create-submissions` — создаёт `kpi_submissions` для всех активных сотрудников по уже существующему периоду (без Redmine, для случаев когда задачи уже созданы)
+
+### Интеграция GigaChat
+- **Файл:** `backend/app/services/ai_service.py` — полностью переписан с поддержкой нескольких провайдеров
+- **Файл:** `backend/app/config.py` — добавлено поле `gigachat_api_key`
+- Приоритет: **GigaChat → Gemini → заглушка**
+- GigaChat: OAuth через `ngw.devices.sberbank.ru:9443/api/v2/oauth` (scope: `GIGACHAT_API_PERS`), чат через `gigachat.devices.sberbank.ru/api/v1/chat/completions`, `verify=False` (самоподписанный сертификат Сбера)
+- Ключ `GIGACHAT_API_KEY` — base64(client_id:client_secret) из кабинета developers.sber.ru/gigachat
+
+### Результаты тестирования (все 37 эндпоинтов)
+Протестированы локально, все работают:
+- Авторизация (login/refresh/me), синхронизация сотрудников (81 чел., 9 подразделений)
+- Управление периодами (CRUD), создание KPI-задач (dry_run + реальное)
+- KPI-форма: структура, AI-саммари (Gemini, 43 трудозатраты), черновик, submit
+- Review: команда, просмотр, утверждение/отклонение
+- PDF-генерация (~20KB), финализация
+- Финансовый дашборд, панель администратора, уведомления
+- Telegram-бот: код корректен, локально не работает из-за блокировки Docker Desktop → Telegram IP; на Amvera будет работать
+
 ## Деплой на Amvera
 
 ### Переменные окружения (.env на сервере)
 - `REDMINE_URL`, `REDMINE_API_KEY`
 - `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `JWT_SECRET_KEY` — минимум 32 символа, случайная строка
-- `TELEGRAM_BOT_TOKEN` — токен бота
-- `ANTHROPIC_API_KEY` — ключ Claude API
+- `TELEGRAM_BOT_TOKEN` — токен бота (`redmine_monitor_bot`)
+- `GIGACHAT_API_KEY` — Authorization Data из кабинета GigaChat (base64, основной AI)
+- `GEMINI_API_KEY` — ключ Gemini (резервный AI)
+- `ANTHROPIC_API_KEY` — ключ Claude API (не используется, опционально)
 - `FINANCE_TELEGRAM_IDS` — chat_id финансового блока через запятую
 - `FRONTEND_URL` — URL фронтенда (для CORS)
 - `BACKEND_URL` — URL бэкенда

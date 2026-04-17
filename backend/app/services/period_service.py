@@ -6,6 +6,7 @@ from app.core.redmine import redmine_client
 from app.models.period import Period, PeriodStatus
 from app.models.period_exception import PeriodException, ExceptionType
 from app.models.employee import Employee, EmployeeStatus
+from app.models.kpi_submission import KpiSubmission, SubmissionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,16 @@ class PeriodService:
                         "issue_id": issue["id"],
                         "project": project_id,
                     })
+                    submission = KpiSubmission(
+                        employee_redmine_id=emp.redmine_id,
+                        employee_login=emp.login,
+                        period_id=period.id,
+                        period_name=period.name,
+                        position_id=emp.position_id,
+                        redmine_issue_id=issue["id"],
+                        status=SubmissionStatus.draft,
+                    )
+                    db.add(submission)
                 else:
                     stats["errors"] += 1
                     stats["details"].append({

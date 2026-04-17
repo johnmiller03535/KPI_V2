@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Gemini
     gemini_api_key: Optional[str] = None
 
+    # GigaChat
+    gigachat_api_key: Optional[str] = None
+
     # App
     app_env: str = "development"
     # Comma-separated list of allowed CORS origins, e.g.:

@@ -240,6 +240,47 @@ async def get_audit_log(
     ]
 
 
+@router.post("/periods/{period_id}/create-submissions")
+async def create_missing_submissions(
+    period_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Создать локальные kpi_submissions для уже существующего периода (без Redmine)."""
+    period_result = await db.execute(select(Period).where(Period.id == period_id))
+    period = period_result.scalar_one_or_none()
+    if not period:
+        raise HTTPException(status_code=404, detail="Период не найден")
+
+    emp_result = await db.execute(
+        select(Employee).where(Employee.status == EmployeeStatus.active)
+    )
+    employees = emp_result.scalars().all()
+
+    existing_result = await db.execute(
+        select(KpiSubmission.employee_redmine_id).where(KpiSubmission.period_id == period.id)
+    )
+    existing_ids = {row[0] for row in existing_result.all()}
+
+    created = 0
+    for emp in employees:
+        if emp.redmine_id in existing_ids:
+            continue
+        submission = KpiSubmission(
+            employee_redmine_id=emp.redmine_id,
+            employee_login=emp.login,
+            period_id=period.id,
+            period_name=period.name,
+            position_id=emp.position_id,
+            status=SubmissionStatus.draft,
+        )
+        db.add(submission)
+        created += 1
+
+    await db.commit()
+    return {"created": created, "already_existed": len(existing_ids)}
+
+
 @router.get("/sync-logs")
 async def get_sync_logs_admin(
     db: AsyncSession = Depends(get_db),
