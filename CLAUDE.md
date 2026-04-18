@@ -61,13 +61,18 @@ kpi-portal/
 | 1 | Авторизация и роли | ✅ |
 | 2 | Синхронизация с Redmine | ✅ |
 | 3 | Управление периодами (Админ) | ✅ |
-| 4 | KPI-форма сотрудника + Claude API | ✅ |
+| 4 | KPI-форма сотрудника + AI | ✅ |
 | 5 | Дашборд руководителя + утверждение | ✅ |
 | 6 | Генерация PDF + запись в Redmine | ✅ |
 | 7 | Система напоминаний | ✅ |
 | 8 | Telegram-бот (руководители) | ✅ |
 | 9 | Панель администратора | ✅ |
 | 10 | Финансовый дашборд | ✅ |
+| A | Рефакторинг KpiMappingService (5 типов) | ✅ |
+| B | KpiEngineService + ThresholdParser | ✅ |
+| C | API binary_manual + KPI-форма Dark Cyber | ✅ |
+| D | Форма руководителя + PDF таблица KPI | ✅ |
+| E | Дашборд Dark Cyber + сквозной цикл | ✅ |
 
 ## Ключевые решения (зафиксированные)
 
@@ -99,34 +104,91 @@ kpi-portal/
 - `/admin/periods` — страница управления периодами (только admin)
 - `/dashboard` — ссылка «Управление периодами» для роли admin
 
-## Этап 4 — KPI-форма сотрудника (детали реализации)
+## Доработка — KPI Engine (шаги A–E, апрель 2026)
 
-### Модели
-- `KpiSubmission` — таблица `kpi_submissions`: employee+period+position_id, статус, бинарные поля, kpi_values JSON, AI-поля, reviewer-поля
+### AI-провайдер
+- PRIMARY: OpenAI GPT (gpt-4o-mini), ключ OPENAI_API_KEY
+- FALLBACK: Google Gemini (gemini-1.5-flash), ключ GEMINI_API_KEY
+- ЗАГЛУШКА: score=100, confidence=50, summary="Требует ручной проверки"
+- Удалён: GigaChat
 
-### Сервисы
-- `AIService.summarize_time_entries` — провайдеры с приоритетом: GigaChat → Gemini → заглушка; промт → JSON с criteria/general_summary/discipline_summary; заглушка при пустых трудозатратах
-- `KpiMappingService` — читает KPI_Mapping.xlsx (openpyxl); 91 должность, 478 индикаторов
-  - `get_binary_auto_criteria(role_id)` → `formula_type == "100%"` (бинарные, AI-описание)
-  - `get_numeric_kpis(role_id)` → `formula_type != "100%"` (пороговые, ввод вручную)
-  - Дедупликация критериев через seen-set
+### KpiMappingService (backend/app/services/kpi_mapping_service.py)
+- Читает KPI_Indicators лист из KPI_Mapping.xlsx
+- 5 реальных значений formula_type:
+  * `binary_auto` — AI анализирует трудозатраты Redmine
+  * `binary_manual` — руководитель оценивает вручную (0 или 100)
+  * `threshold` — одно пороговое значение
+  * `multi_threshold` — ступенчатая оценка (несколько диапазонов)
+  * `quarterly_threshold` — пороги по кварталам
+- `get_kpi_structure(role_id)` → `KpiStructure { binary_auto[], binary_manual[], numeric[] }`
+- `get_kpi_structure_by_pos_id(pos_id)` — поиск по числовому pos_id из employees.position_id
+- **Важно:** `employees.position_id` хранит числовой `pos_id` (`"71"`), не `role_id` (`"ЦТР_НАЧ_071"`)
 
-### Важно: реальные formula_type в KPI_Mapping.xlsx
-Значения — процентные пороги (`100%`, `90%`, `65%`, `>=3,5`, `>22` и т.д.), не символические имена.
-- `100%` → бинарный KPI (AI-саммари)
-- всё остальное → числовой KPI (ввод факта вручную)
+### ThresholdParser (backend/app/services/threshold_parser.py)
+- `parse_thresholds(str)` → `list[ThresholdRule]`
+- `apply_threshold(value, rules)` → `float` (score 0–100)
+- `evaluate_threshold_kpi(formula_type, thresholds, fact_value, quarter)` → `float`
+- 17 unit-тестов: `pytest backend/tests/test_threshold_parser.py`
 
-### API (`/api/submissions/`)
-- `GET /my` — список своих отчётов
-- `GET /my/{id}` — конкретный отчёт
-- `POST /my/{id}/generate-summary` — трудозатраты Redmine → Claude API → сохранить
-- `PATCH /my/{id}` — сохранить черновик (bin-поля + kpi_values JSON)
-- `POST /my/{id}/submit` — отправить на проверку (→ submitted)
-- `GET /my/{id}/kpi-structure` — структура KPI из KPI_Mapping для должности
+### KpiEngineService (backend/app/services/kpi_engine_service.py)
+- `process_submission(submission_id, db)` → `KpiEngineResult`
+- Параллельный вызов AI через `asyncio.gather` (только binary_auto)
+- `partial_score` = взвешенное среднее по оценённым KPI
+- Сохраняет в `submission.kpi_values` (JSONB) + `submission.ai_raw_summary`
+- `compute_score_from_kpi_values(kpi_values)` → `(partial_score, total_weight, scored_weight)`
 
-### Frontend
-- `/kpi/{submissionId}` — KPI-форма сотрудника: AI-кнопка, текстовые поля, числовые KPI
-- `/dashboard` — список KPI-отчётов с цветными статус-бейджами и кнопкой «Открыть»
+### Схемы (backend/app/schemas/kpi.py)
+- `KpiItem` — один KPI из маппинга
+- `KpiStructure` — три группы: binary_auto / binary_manual / numeric
+- `KpiResult` — результат оценки: score, confidence, summary, awaiting_manual_input, requires_review
+- `KpiEngineResult` — итог process_submission: kpi_results[], partial_score, completion_pct
+- `BinaryManualUpdate` — тело PATCH /binary-manual `{ kpi_index, score, comment }`
+- `PendingManualResponse` — ответ GET /pending-manual
+
+### API Submissions (backend/app/api/kpi_submissions.py)
+- `POST /my/{id}/generate-summary` → KpiEngineResult (AI + порогá + разметка)
+- `GET /my/{id}/score` → ScoreResponse (partial_score, total_weight, completion_pct)
+- `PATCH /my/{id}` → SubmissionNumericUpdate (numeric_values + binary_manual_overrides)
+- `GET /my/{id}/kpi-structure` → KpiStructure (три группы по должности)
+- `POST /my/{id}/submit` → отправка на проверку (draft/rejected → submitted)
+
+### API Review (backend/app/api/review.py)
+- `GET /{id}/pending-manual` → список binary_manual KPI с `awaiting_manual_input=True`
+- `PATCH /{id}/binary-manual` → score 0|100, пишет AuditLog, пересчитывает partial_score
+- Проверка subordination через `_get_effective_subordinate_ids` (403 если не подчинённый)
+- Идемпотентность: 409 если статус уже approved/rejected
+
+### Frontend — Dark Cyber дизайн-система
+- `frontend/src/styles/cyber.css` — CSS custom properties + компоненты
+  * Шрифты: Orbitron (цифры/заголовки), Exo 2 (текст)
+  * Палитра: `--bg #06060f`, `--accent #00e5ff`, `--accent3 #00ff9d`, `--danger #ff3b5c`, `--warn #ffb800`
+  * Компоненты: `.cyber-card` (полоска accent сверху + glow), `.progress-bar-wrap/.fill`, `.badge-*`, `.loader-ring`
+
+### Frontend — Страницы
+- `/dashboard` — Dark Cyber карточки с прогресс-барами и счётчиками `⚡ AI · 👤 Ручных · 📊 Числовых`; умные кнопки (PDF/Просмотр/Заполнить); секция «Ожидают проверки» для руководителей
+- `/kpi/[submissionId]` — три секции: AI / числовые (debounce-ввод) / ручная оценка
+  * Баннер при пустых kpi_values; статусные баннеры submitted/approved; submit заблокирован при незаполненных numeric или пустых kpi_values
+- `/review/[submissionId]` — форма руководителя: binary_auto (read-only) / numeric (read-only) / binary_manual (кнопки ✅/❌, без перезагрузки)
+  * Модальное окно отклонения min 10 символов; «Утвердить» заблокирован при pending_manual > 0
+- `/review` — фильтры по статусу, client-side вычисление score из kpi_values, сетка команды
+
+### PDF (backend/app/services/report_service.py + kpi_report.html)
+- Основная корпоративная таблица (specific_kpis + три общих KPI) — сохранена
+- Дополнительная сводная таблица `{% if kpi_results %}` — прямой обход kpi_values
+  * Колонки: № / Показатель / Критерий / Вес / Факт+Результат / Оценка%
+  * binary_auto → AI summary; binary_manual → reviewer_comment; numeric → fact_value
+  * Итоговая строка: `total_score | int`%; сноска при `requires_review`
+- Контекст: `kpi_results`, `total_score`, `has_review_flags` — добавлены в `_build_context`
+
+### Критические фиксы (выявлены в ходе доработки)
+- `SubordinationService._to_unit`: возвращал `role_info["unit"]` вместо `role_info["role_id"]` → my-team видел 0 подчинённых
+- `_get_effective_subordinate_ids`: конвертация role_ids → pos_ids через `_role_ids_to_pos_ids()`
+- `create-tasks` не создавал `KpiSubmission` в локальной БД — исправлено в period_service.py
+
+### Актуальные переменные окружения для AI
+- `OPENAI_API_KEY` — ключ OpenAI (sk-...), основной провайдер
+- `GEMINI_API_KEY` — ключ Gemini, резервный провайдер
+- `GIGACHAT_API_KEY` — **удалён**, больше не используется
 
 ## Этап 7 — Система напоминаний (детали реализации)
 
@@ -393,9 +455,8 @@ kpi-portal/
 - `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 - `JWT_SECRET_KEY` — минимум 32 символа, случайная строка
 - `TELEGRAM_BOT_TOKEN` — токен бота (`redmine_monitor_bot`)
-- `OPENAI_API_KEY` — ключ OpenAI (GPT-4o-mini, основной AI)
-- `GEMINI_API_KEY` — ключ Gemini (резервный AI)
-- `ANTHROPIC_API_KEY` — ключ Claude API (не используется, опционально)
+- `OPENAI_API_KEY` — ключ OpenAI GPT (sk-...), основной AI-провайдер
+- `GEMINI_API_KEY` — ключ Gemini (резервный AI, если OpenAI недоступен)
 - `FINANCE_TELEGRAM_IDS` — chat_id финансового блока через запятую
 - `FRONTEND_URL` — URL фронтенда (для CORS)
 - `BACKEND_URL` — URL бэкенда
