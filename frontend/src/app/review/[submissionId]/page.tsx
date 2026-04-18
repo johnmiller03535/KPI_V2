@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { NavBar } from '@/components/NavBar'
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -550,16 +551,22 @@ export default function ReviewDetailPage({
         />
       )}
 
-      <div style={{ maxWidth: 820, margin: '0 auto', padding: '32px 20px', position: 'relative', zIndex: 1 }}>
+      <div style={{ minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <NavBar />
+
+      {/* Breadcrumb */}
+      <div className="breadcrumb">
+        <a href="/dashboard">KPI ПОРТАЛ</a>
+        <span className="breadcrumb-sep">›</span>
+        <a href="/review">Проверка отчётов</a>
+        <span className="breadcrumb-sep">›</span>
+        <span className="breadcrumb-current">{submission.employee_full_name}</span>
+      </div>
+
+      <div style={{ maxWidth: 820, margin: '0 auto', padding: '24px 24px 40px', position: 'relative', zIndex: 1 }}>
 
         {/* Хедер */}
-        <div style={{ marginBottom: 28 }}>
-          <button
-            onClick={() => router.push('/review')}
-            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 16, fontFamily: 'Exo 2, sans-serif' }}
-          >
-            ← Проверка отчётов
-          </button>
+        <div style={{ marginBottom: 24 }}>
           <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 14, fontWeight: 900, letterSpacing: 3, color: 'var(--accent)', marginBottom: 6, textShadow: 'var(--glow)' }}>
             KPI ПОРТАЛ
           </div>
@@ -592,22 +599,17 @@ export default function ReviewDetailPage({
           </div>
         </div>
 
-        {/* Баннер: ожидают ручной оценки */}
-        {pending > 0 && canDecide && (
-          <div style={{
-            padding: '12px 16px',
-            borderRadius: 10,
-            background: 'rgba(255,184,0,0.08)',
-            border: '1px solid rgba(255,184,0,0.3)',
-            color: 'var(--warn)',
-            fontSize: 13,
-            marginBottom: 24,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}>
-            <span>⚠</span>
+        {/* Alert-banner */}
+        {canDecide && pending > 0 && (
+          <div className="alert-banner alert-warn">
+            <span style={{ fontSize: 18 }}>⚠</span>
             <span>Необходимо оценить <strong>{pending}</strong> {pending === 1 ? 'показатель' : pending < 5 ? 'показателя' : 'показателей'} вручную перед утверждением</span>
+          </div>
+        )}
+        {canDecide && pending === 0 && kpiValues.length > 0 && (
+          <div className="alert-banner alert-success">
+            <span style={{ fontSize: 18 }}>✅</span>
+            <span>Все показатели оценены. Можно утвердить отчёт.</span>
           </div>
         )}
 
@@ -791,6 +793,7 @@ export default function ReviewDetailPage({
         ) : null}
 
       </div>
+      </div>  {/* minHeight wrapper */}
     </>
   )
 }

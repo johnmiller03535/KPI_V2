@@ -1,7 +1,11 @@
 import logging
+import warnings
+import urllib3
 import httpx
 from typing import Optional
 from app.config import settings
+
+warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +18,7 @@ class RedmineClient:
         return {"X-Redmine-API-Key": self.api_key}
 
     async def verify_credentials(self, login: str, password: str) -> Optional[dict]:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/users/current.json",
@@ -34,7 +38,7 @@ class RedmineClient:
         users = []
         offset = 0
         limit = 100
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
             while True:
                 try:
                     response = await client.get(
@@ -59,7 +63,7 @@ class RedmineClient:
         """
         Получает детали пользователя включая кастомные поля.
         """
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/users/{user_id}.json",
@@ -74,7 +78,7 @@ class RedmineClient:
 
     async def get_project_memberships(self, project_id: str) -> list[dict]:
         """Получает участников KPI-проекта."""
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/projects/{project_id}/memberships.json",
@@ -101,7 +105,7 @@ class RedmineClient:
                 "custom_fields": custom_fields,
             }
         }
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
             try:
                 response = await client.post(
                     f"{self.base_url}/issues.json",
@@ -118,7 +122,7 @@ class RedmineClient:
 
     async def get_issue(self, issue_id: int) -> Optional[dict]:
         """Получает задачу по ID."""
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/issues/{issue_id}.json",
@@ -138,7 +142,7 @@ class RedmineClient:
         date_from, date_to — формат 'YYYY-MM-DD'
         Возвращает список записей с полями: hours, comments, spent_on, activity, issue
         """
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/time_entries.json",
@@ -169,7 +173,7 @@ class RedmineClient:
         if tracker_id:
             params["tracker_id"] = tracker_id
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
             try:
                 response = await client.get(
                     f"{self.base_url}/issues.json",

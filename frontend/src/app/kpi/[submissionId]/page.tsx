@@ -7,6 +7,7 @@ import { KpiCard } from '@/components/kpi/KpiCard'
 import { NumericInput } from '@/components/kpi/NumericInput'
 import { SectionTitle } from '@/components/kpi/SectionTitle'
 import { ScoreHeader } from '@/components/kpi/ScoreHeader'
+import { NavBar } from '@/components/NavBar'
 
 // --- Types ---
 
@@ -200,7 +201,19 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         </div>
       )}
 
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px', position: 'relative', zIndex: 1 }}>
+      <div style={{ minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <NavBar />
+
+      {/* Breadcrumb */}
+      <div className="breadcrumb">
+        <a href="/dashboard">KPI ПОРТАЛ</a>
+        <span className="breadcrumb-sep">›</span>
+        <a href="/dashboard">Мои отчёты</a>
+        <span className="breadcrumb-sep">›</span>
+        <span className="breadcrumb-current">{submission?.period_name || '...'}</span>
+      </div>
+
+      <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 24px 40px', position: 'relative', zIndex: 1 }}>
 
         {/* Хедер */}
         <ScoreHeader
@@ -284,7 +297,11 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         {/* СЕКЦИЯ 1 — AI-оценка */}
         {binaryAuto.length > 0 && (
           <section style={{ marginBottom: 32 }}>
-            <SectionTitle icon="⚡" title="AI-ОЦЕНКА" />
+            <div className="section-heading">
+              <span style={{ fontSize: 18 }}>⚡</span>
+              <span className="section-heading-text">AI-Оценка</span>
+              <span className="section-heading-count">{binaryAuto.length}</span>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {binaryAuto.map((item, i) => (
                 <KpiCard key={i} item={item} />
@@ -296,7 +313,11 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         {/* СЕКЦИЯ 2 — Числовые показатели */}
         {numeric.length > 0 && (
           <section style={{ marginBottom: 32 }}>
-            <SectionTitle icon="📊" title="ЧИСЛОВЫЕ ПОКАЗАТЕЛИ" />
+            <div className="section-heading">
+              <span style={{ fontSize: 18 }}>📊</span>
+              <span className="section-heading-text">Числовые показатели</span>
+              <span className="section-heading-count">{numeric.length}</span>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {numeric.map((item, i) => (
                 <NumericInput
@@ -313,7 +334,11 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         {/* СЕКЦИЯ 3 — Оценка руководителем */}
         {binaryManual.length > 0 && (
           <section style={{ marginBottom: 32 }}>
-            <SectionTitle icon="👤" title="ОЦЕНКА РУКОВОДИТЕЛЕМ" />
+            <div className="section-heading">
+              <span style={{ fontSize: 18 }}>👤</span>
+              <span className="section-heading-text">Оценка руководителем</span>
+              <span className="section-heading-count">{binaryManual.length}</span>
+            </div>
             <div style={{
               padding: '12px 16px',
               background: 'rgba(255,255,255,0.03)',
@@ -398,6 +423,7 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         )}
 
       </div>
+      </div>  {/* minHeight wrapper */}
     </>
   )
 }
