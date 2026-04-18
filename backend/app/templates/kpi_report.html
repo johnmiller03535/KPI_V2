@@ -112,6 +112,64 @@
     border-bottom: 1px solid #000;
     min-width: 50mm;
   }
+
+  /* ── Сводная таблица KPI (новый формат) ── */
+  .kpi-summary-section { margin-top: 6mm; page-break-inside: avoid; }
+  .kpi-summary-title {
+    font-size: 8pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #1a2a4a;
+    border-bottom: 1.5pt solid #1a2a4a;
+    padding-bottom: 1.5mm;
+    margin-bottom: 2mm;
+  }
+  .kpi-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 7.5pt;
+    font-family: Arial, "DejaVu Sans", sans-serif;
+  }
+  .kpi-summary-table th {
+    background: #1a2a4a;
+    color: #fff;
+    padding: 1.5mm 2mm;
+    text-align: left;
+    font-weight: bold;
+    font-size: 7pt;
+    text-transform: uppercase;
+  }
+  .kpi-summary-table td {
+    padding: 1.5mm 2mm;
+    border-bottom: 0.5pt solid #dde2ee;
+    vertical-align: top;
+    line-height: 1.35;
+  }
+  .kpi-summary-table tr:nth-child(even) td { background: #f5f7fb; }
+  .kpi-sum-common td { border-left: 2pt solid #7c8ea8; }
+  .kpi-sum-total td {
+    background: #e8ecf4 !important;
+    border-top: 1.5pt solid #1a2a4a;
+    font-weight: bold;
+  }
+  .kpi-sum-num  { width: 4%;  text-align: center; }
+  .kpi-sum-ind  { width: 22%; }
+  .kpi-sum-crit { width: 26%; }
+  .kpi-sum-wt   { width: 6%;  text-align: center; }
+  .kpi-sum-fact { width: 30%; white-space: pre-wrap; }
+  .kpi-sum-sc   { width: 8%;  text-align: center; font-weight: bold; }
+  .sc-done    { color: #2e7d32; }
+  .sc-fail    { color: #c62828; }
+  .sc-part    { color: #e65100; }
+  .sc-empty   { color: #9e9e9e; }
+  .sc-total   { font-size: 9pt; color: #1a2a4a; }
+  .tag-cum {
+    font-size: 6pt; background: #e3f2fd; color: #1565c0;
+    padding: 0 2px; border-radius: 2px; margin-left: 2px;
+  }
+  .tag-rev { color: #e65100; font-weight: bold; margin-left: 1px; }
+  .kpi-footnote { font-size: 7pt; color: #757575; margin-top: 1.5mm; font-style: italic; }
 </style>
 </head>
 <body>
@@ -232,6 +290,63 @@
 
   </tbody>
 </table>
+
+{% if kpi_results %}
+<div class="kpi-summary-section">
+  <div class="kpi-summary-title">Детализация показателей эффективности и результативности</div>
+  <table class="kpi-summary-table">
+    <thead>
+      <tr>
+        <th class="kpi-sum-num">№</th>
+        <th class="kpi-sum-ind">Показатель</th>
+        <th class="kpi-sum-crit">Критерий / Методика</th>
+        <th class="kpi-sum-wt">Вес</th>
+        <th class="kpi-sum-fact">Факт / Результат</th>
+        <th class="kpi-sum-sc">Оценка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for kpi in kpi_results %}
+      <tr class="{% if kpi.is_common %}kpi-sum-common{% endif %}">
+        <td class="kpi-sum-num">{{ loop.index }}</td>
+        <td class="kpi-sum-ind">
+          {{ (kpi.indicator or '')[:100] }}{% if kpi.indicator and kpi.indicator|length > 100 %}…{% endif %}
+          {% if kpi.cumulative %}<span class="tag-cum">нараст.</span>{% endif %}
+          {% if kpi.requires_review %}<span class="tag-rev">*</span>{% endif %}
+        </td>
+        <td class="kpi-sum-crit">
+          {{ (kpi.criterion or '')[:140] }}{% if kpi.criterion and kpi.criterion|length > 140 %}…{% endif %}
+        </td>
+        <td class="kpi-sum-wt">{{ kpi.weight }}%</td>
+        <td class="kpi-sum-fact">
+          {% if kpi.kpi_type == 'binary_auto' %}
+            {{ (kpi.summary or '')[:200] }}{% if kpi.summary and kpi.summary|length > 200 %}…{% endif %}
+          {% elif kpi.kpi_type == 'binary_manual' %}
+            {{ kpi.reviewer_comment or '—' }}
+          {% else %}
+            {% if kpi.fact_value is not none %}{{ kpi.fact_value }}{% else %}не указано{% endif %}
+          {% endif %}
+        </td>
+        <td class="kpi-sum-sc {% if kpi.score == 100 %}sc-done{% elif kpi.score == 0 %}sc-fail{% elif kpi.score is none %}sc-empty{% else %}sc-part{% endif %}">
+          {% if kpi.score is not none %}{{ kpi.score | int }}%{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="kpi-sum-total">
+        <td colspan="3">ИТОГОВАЯ ОЦЕНКА</td>
+        <td class="kpi-sum-wt">100%</td>
+        <td></td>
+        <td class="kpi-sum-sc sc-total">{{ total_score | int }}%</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% if has_review_flags %}
+  <p class="kpi-footnote">* — показатель потребовал дополнительной проверки руководителем</p>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="sign-block">
   <div class="sign-line">

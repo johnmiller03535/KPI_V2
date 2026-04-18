@@ -219,6 +219,11 @@ class ReportService:
 
             # Мета
             "generated_at": datetime.now(timezone.utc).strftime("%d.%m.%Y"),
+
+            # Новый формат — прямая передача kpi_values для сводной таблицы
+            "kpi_results":      kpi_values,
+            "total_score":      round(total_result * 100, 1),
+            "has_review_flags": any(k.get("requires_review") for k in kpi_values),
         }
 
     # ------------------------------------------------------------------

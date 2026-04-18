@@ -165,6 +165,8 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
 
   const isEditable = submission?.status === 'draft' || submission?.status === 'rejected'
   const hasUnfilledNumeric = numeric.some(k => k.score === null && k.fact_value === null)
+  // Блокируем submit также если AI ещё не запускался
+  const submitBlocked = hasUnfilledNumeric || kpiValues.length === 0
 
   // --- Render ---
 
@@ -211,28 +213,70 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
           isEditable={isEditable}
           generating={generating}
           submitting={submitting}
-          hasUnfilledNumeric={isEditable && hasUnfilledNumeric}
+          hasUnfilledNumeric={isEditable && submitBlocked}
           onGenerate={handleGenerate}
           onSubmit={handleSubmit}
           onBack={() => router.push('/dashboard')}
         />
 
-        {/* Если kpi_values пустые — подсказка */}
+        {/* Баннер статуса submitted / approved */}
+        {submission.status === 'submitted' && (
+          <div style={{
+            marginBottom: 24,
+            padding: '14px 18px',
+            borderRadius: 12,
+            border: '1px solid rgba(255,184,0,0.35)',
+            background: 'rgba(255,184,0,0.07)',
+            color: 'var(--warn)',
+            fontSize: 14,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}>
+            <span style={{ fontSize: 18 }}>⏳</span>
+            <span>Отчёт отправлен на проверку руководителю. Редактирование недоступно.</span>
+          </div>
+        )}
+        {submission.status === 'approved' && (
+          <div style={{
+            marginBottom: 24,
+            padding: '14px 18px',
+            borderRadius: 12,
+            border: '1px solid rgba(0,255,157,0.35)',
+            background: 'rgba(0,255,157,0.07)',
+            color: 'var(--accent3)',
+            fontSize: 14,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}>
+            <span style={{ fontSize: 18 }}>✅</span>
+            <span>Отчёт утверждён руководителем.</span>
+          </div>
+        )}
+
+        {/* Если kpi_values пустые — баннер с призывом запустить AI */}
         {kpiValues.length === 0 && isEditable && (
           <div style={{
-            padding: '24px',
-            border: '1px dashed rgba(0,229,255,0.2)',
-            borderRadius: 16,
-            textAlign: 'center',
-            color: 'var(--text-dim)',
+            padding: '18px 20px',
+            border: '1px solid rgba(0,229,255,0.4)',
+            borderRadius: 12,
+            background: 'rgba(0,229,255,0.05)',
             marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
           }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
-            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 12, letterSpacing: 2, marginBottom: 8 }}>
-              НАЖМИТЕ «СГЕНЕРИРОВАТЬ AI-ОЦЕНКУ»
-            </div>
-            <div style={{ fontSize: 13 }}>
-              Система проанализирует ваши трудозатраты в Redmine и автоматически оценит бинарные KPI
+            <span style={{ fontSize: 28 }}>⚡</span>
+            <div>
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 12, letterSpacing: 2, color: 'var(--accent)', marginBottom: 4 }}>
+                НАЖМИТЕ «СГЕНЕРИРОВАТЬ AI-ОЦЕНКУ»
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+                Система проанализирует ваши трудозатраты в Redmine и автоматически заполнит показатели
+              </div>
             </div>
           </div>
         )}
