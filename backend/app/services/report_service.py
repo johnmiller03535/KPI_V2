@@ -69,50 +69,118 @@ class ReportService:
     ) -> dict:
         role_info = kpi_mapping_service.get_role_info(submission.position_id) if submission.position_id else None
 
-        # Специфические KPI
+        kpi_values: list[dict] = submission.kpi_values or []
+
+        # Разбиваем kpi_values на группы
+        binary_auto   = [k for k in kpi_values if k.get("kpi_type") == "binary_auto"]
+        binary_manual = [k for k in kpi_values if k.get("kpi_type") == "binary_manual"]
+        numeric       = [k for k in kpi_values if k.get("kpi_type") == "numeric"]
+
+        # --- Специфические (не общие) KPI = binary_auto + numeric ---
         specific_kpis = []
         specific_indicator_name = "Специфические показатели"
         total_result = 0.0
 
-        if submission.kpi_values:
-            # Название из первого показателя
-            specific_indicator_name = submission.kpi_values[0].get(
-                "indicator", specific_indicator_name
-            )
-            for kv in submission.kpi_values:
-                weight_pct = float(kv.get("weight", 0))   # вес в %
-                weight_frac = weight_pct / 100             # вес в долях
+        non_common = [k for k in (binary_auto + numeric) if not k.get("is_common", False)]
+        if non_common:
+            specific_indicator_name = non_common[0].get("indicator", specific_indicator_name)
+
+        for kv in non_common:
+            weight_pct  = float(kv.get("weight", 0))
+            weight_frac = weight_pct / 100
+            kpi_type    = kv.get("kpi_type", "")
+            score       = kv.get("score")          # 0–100 для binary_auto; None если не оценено
+
+            if kpi_type == "binary_auto":
+                # fact = 1 (выполнено) или 0 (не выполнено), план = 1
+                fact_display = "1" if score == 100 else ("0" if score == 0 else "—")
+                pct_display  = f"{score:.0f}%" if score is not None else "—"
+                result_val   = f"{weight_frac * (score / 100):.2f}" if score is not None else "—"
+                measures     = kv.get("summary", "")
+                plan_display = "1"
+                if score is not None:
+                    total_result += weight_frac * (score / 100)
+            else:
+                # numeric
                 fact = kv.get("fact_value")
-                plan_val = kv.get("plan_value", "1")
+                plan_display = kv.get("plan_value", "1")
+                pct_display  = f"{score:.0f}%" if score is not None else "—"
+                fact_display = str(fact) if fact is not None else "—"
+                result_val   = f"{weight_frac * (score / 100):.2f}" if score is not None else "—"
+                measures     = ""
+                if score is not None:
+                    total_result += weight_frac * (score / 100)
 
-                pct = self._pct(fact, 1)
-                result_val = self._result(fact, weight_frac, 1)
+            specific_kpis.append({
+                "criterion":    kv.get("criterion", ""),
+                "plan_value":   plan_display,
+                "weight_pct":   f"{weight_pct:.0f}%",
+                "measures":     measures,
+                "fact_value":   fact_display,
+                "pct_value":    pct_display,
+                "result_value": result_val,
+            })
 
-                specific_kpis.append({
-                    "criterion":   kv.get("criterion", ""),
-                    "plan_value":  plan_val,
-                    "weight_pct":  f"{weight_pct:.0f}%",
-                    "measures":    kv.get("summary", kv.get("measures", "")),
-                    "fact_value":  fact if fact is not None else "—",
-                    "pct_value":   pct,
-                    "result_value": result_val,
-                })
+        # --- Общие бинарные KPI (обычно binary_manual с is_common=True) ---
+        # Если kpi_values есть — берём из них; иначе берём из старых текстовых полей
+        def _kv_by_criterion_fragment(items: list[dict], fragment: str) -> Optional[dict]:
+            """Ищет KPI по фрагменту критерия (без учёта регистра)."""
+            fragment_l = fragment.lower()
+            for kv in items:
+                if fragment_l in kv.get("criterion", "").lower():
+                    return kv
+            return None
 
-                try:
-                    f = float(fact) if fact is not None else 0
-                    total_result += weight_frac * f
-                except (TypeError, ValueError):
-                    pass
+        # Дисциплина (30%) — discipline / binary_auto is_common или старый текст
+        discipline_kv = _kv_by_criterion_fragment(kpi_values, "исполнительской дисциплин")
+        if discipline_kv:
+            d_score   = discipline_kv.get("score")
+            d_fact    = "1" if d_score == 100 else ("0" if d_score == 0 else "1")
+            d_pct     = self._pct(1 if d_score == 100 else 0 if d_score == 0 else 1)
+            d_result  = self._result(1 if d_score == 100 else 0 if d_score == 0 else 1, 0.30)
+            d_summary = discipline_kv.get("summary") or submission.bin_discipline_summary or ""
+            d_num     = 1 if d_score == 100 else 0 if d_score == 0 else 1
+        else:
+            d_num     = 1
+            d_fact    = "1"
+            d_pct     = self._pct(1)
+            d_result  = self._result(1, 0.30)
+            d_summary = submission.bin_discipline_summary or ""
+        total_result += 0.30 * d_num
 
-        # Бинарные KPI (предполагаем выполнены = 1, если отчёт утверждён)
-        bin_facts = {
-            "discipline": 1,
-            "schedule":   1,
-            "safety":     1,
-        }
-        total_result += 0.30 * bin_facts["discipline"]
-        total_result += 0.10 * bin_facts["schedule"]
-        total_result += 0.10 * bin_facts["safety"]
+        # Распорядок (10%)
+        schedule_kv = _kv_by_criterion_fragment(binary_manual, "трудового распорядка")
+        if schedule_kv:
+            s_score   = schedule_kv.get("score")
+            s_fact    = "1" if s_score == 100 else ("0" if s_score == 0 else "—")
+            s_pct     = self._pct(1 if s_score == 100 else 0 if s_score == 0 else None)
+            s_result  = self._result(1 if s_score == 100 else 0 if s_score == 0 else None, 0.10)
+            s_summary = schedule_kv.get("reviewer_comment") or schedule_kv.get("summary") or submission.bin_schedule_summary or ""
+            s_num     = (s_score or 0) / 100
+        else:
+            s_num     = 1
+            s_fact    = "1"
+            s_pct     = self._pct(1)
+            s_result  = self._result(1, 0.10)
+            s_summary = submission.bin_schedule_summary or ""
+        total_result += 0.10 * s_num
+
+        # Охрана труда (10%)
+        safety_kv = _kv_by_criterion_fragment(binary_manual, "охран")
+        if safety_kv:
+            sf_score   = safety_kv.get("score")
+            sf_fact    = "1" if sf_score == 100 else ("0" if sf_score == 0 else "—")
+            sf_pct     = self._pct(1 if sf_score == 100 else 0 if sf_score == 0 else None)
+            sf_result  = self._result(1 if sf_score == 100 else 0 if sf_score == 0 else None, 0.10)
+            sf_summary = safety_kv.get("reviewer_comment") or safety_kv.get("summary") or submission.bin_safety_summary or ""
+            sf_num     = (sf_score or 0) / 100
+        else:
+            sf_num     = 1
+            sf_fact    = "1"
+            sf_pct     = self._pct(1)
+            sf_result  = self._result(1, 0.10)
+            sf_summary = submission.bin_safety_summary or ""
+        total_result += 0.10 * sf_num
 
         return {
             # Шапка
@@ -125,24 +193,24 @@ class ReportService:
             "specific_kpis":           specific_kpis,
             "specific_indicator_name": specific_indicator_name,
 
-            # Бинарные
-            "bin_discipline_summary": submission.bin_discipline_summary or "",
-            "bin_discipline_fact":    bin_facts["discipline"],
-            "bin_discipline_pct":     self._pct(bin_facts["discipline"]),
-            "bin_discipline_result":  self._result(bin_facts["discipline"], 0.30),
+            # Бинарные общие
+            "bin_discipline_summary": d_summary,
+            "bin_discipline_fact":    d_fact,
+            "bin_discipline_pct":     d_pct,
+            "bin_discipline_result":  d_result,
 
-            "bin_schedule_summary": submission.bin_schedule_summary or "",
-            "bin_schedule_fact":    bin_facts["schedule"],
-            "bin_schedule_pct":     self._pct(bin_facts["schedule"]),
-            "bin_schedule_result":  self._result(bin_facts["schedule"], 0.10),
+            "bin_schedule_summary": s_summary,
+            "bin_schedule_fact":    s_fact,
+            "bin_schedule_pct":     s_pct,
+            "bin_schedule_result":  s_result,
 
-            "bin_safety_summary": submission.bin_safety_summary or "",
-            "bin_safety_fact":    bin_facts["safety"],
-            "bin_safety_pct":     self._pct(bin_facts["safety"]),
-            "bin_safety_result":  self._result(bin_facts["safety"], 0.10),
+            "bin_safety_summary": sf_summary,
+            "bin_safety_fact":    sf_fact,
+            "bin_safety_pct":     sf_pct,
+            "bin_safety_result":  sf_result,
 
             # Итого
-            "total_result":    f"{total_result:.2f}",
+            "total_result":     f"{total_result:.2f}",
             "premium_proposal": f"{total_result:.2f}",
 
             # Подпись

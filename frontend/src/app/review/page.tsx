@@ -12,6 +12,7 @@ type Submission = {
   role_name: string | null
   status: string
   submitted_at: string | null
+  kpi_values: any[] | null
 }
 
 type TeamMember = {
@@ -22,19 +23,34 @@ type TeamMember = {
   department_name: string | null
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABEL: Record<string, string> = {
   submitted: 'Ожидает проверки',
   approved:  'Утверждён',
   rejected:  'Возвращён',
   draft:     'Черновик',
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  submitted: '#f59e0b',
-  approved:  '#22c55e',
-  rejected:  '#ef4444',
-  draft:     '#94a3b8',
+const STATUS_CLASS: Record<string, string> = {
+  submitted: 'badge-warn',
+  approved:  'badge-success',
+  rejected:  'badge-fail',
+  draft:     'badge-dim',
 }
+
+function computeScore(kpiValues: any[] | null): number | null {
+  if (!kpiValues || kpiValues.length === 0) return null
+  const scored = kpiValues.filter(k => k.score !== null && k.score !== undefined)
+  if (scored.length === 0) return null
+  const sw = scored.reduce((s, k) => s + k.weight, 0)
+  return Math.round(scored.reduce((s, k) => s + k.score * k.weight, 0) / sw)
+}
+
+const FILTERS = [
+  { key: 'submitted', label: 'Ожидают проверки' },
+  { key: 'approved',  label: 'Утверждённые' },
+  { key: 'rejected',  label: 'Возвращённые' },
+  { key: '',          label: 'Все' },
+]
 
 export default function ReviewPage() {
   const router = useRouter()
@@ -44,10 +60,8 @@ export default function ReviewPage() {
   const [filter, setFilter] = useState('submitted')
 
   useEffect(() => {
-    const user = localStorage.getItem('user')
-    if (!user) { router.push('/login'); return }
+    if (!localStorage.getItem('user')) { router.push('/login'); return }
     loadData()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter])
 
   async function loadData() {
@@ -66,108 +80,154 @@ export default function ReviewPage() {
     }
   }
 
-  const s: Record<string, any> = {
-    page:      { padding: '2rem', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto' },
-    card:      { background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', marginBottom: '0.75rem' },
-    badge:     (status: string) => ({
-      display: 'inline-block', padding: '0.2rem 0.6rem',
-      background: (STATUS_COLORS[status] || '#94a3b8') + '20',
-      color: STATUS_COLORS[status] || '#94a3b8',
-      borderRadius: '4px', fontSize: '0.8rem', fontWeight: 600,
-    }),
-    btn:       { padding: '0.4rem 0.875rem', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' },
-    filterBtn: (active: boolean) => ({
-      padding: '0.4rem 0.875rem',
-      background: active ? '#2563eb' : '#f1f5f9',
-      color: active ? 'white' : '#334155',
-      border: '1px solid ' + (active ? '#2563eb' : '#e2e8f0'),
-      borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem',
-    }),
-  }
-
   return (
-    <div style={s.page}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <a href="/dashboard" style={{ color: '#2563eb', fontSize: '0.875rem' }}>← Дашборд</a>
-        <h1 style={{ margin: '0.5rem 0 0.25rem' }}>Проверка отчётов</h1>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '0.875rem' }}>
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 20px', position: 'relative', zIndex: 1 }}>
+
+      {/* Хедер */}
+      <div style={{ marginBottom: 28 }}>
+        <button
+          onClick={() => router.push('/dashboard')}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 16, fontFamily: 'Exo 2, sans-serif' }}
+        >
+          ← Дашборд
+        </button>
+        <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 14, fontWeight: 900, letterSpacing: 3, color: 'var(--accent)', marginBottom: 6, textShadow: 'var(--glow)' }}>
+          KPI ПОРТАЛ
+        </div>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--text)' }}>
+          Проверка отчётов
+        </h1>
+        <div style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 4 }}>
           Команда: {team.length} сотрудников
-        </p>
+        </div>
       </div>
 
       {/* Фильтры */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        {[
-          { key: 'submitted', label: 'Ожидают проверки' },
-          { key: 'approved',  label: 'Утверждённые' },
-          { key: 'rejected',  label: 'Возвращённые' },
-          { key: '',          label: 'Все' },
-        ].map(({ key, label }) => (
-          <button key={key} style={s.filterBtn(filter === key)} onClick={() => setFilter(key)}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
+        {FILTERS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            style={{
+              padding: '7px 16px',
+              borderRadius: 8,
+              border: `1px solid ${filter === key ? 'rgba(0,229,255,0.4)' : 'var(--card-border)'}`,
+              background: filter === key ? 'rgba(0,229,255,0.1)' : 'var(--card)',
+              color: filter === key ? 'var(--accent)' : 'var(--text-dim)',
+              cursor: 'pointer',
+              fontSize: 13,
+              fontFamily: 'Exo 2, sans-serif',
+              fontWeight: filter === key ? 600 : 400,
+              transition: 'all 0.2s',
+            }}
+          >
             {label}
           </button>
         ))}
       </div>
 
+      {/* Список */}
       {loading ? (
-        <p style={{ color: '#64748b' }}>Загрузка...</p>
+        <div style={{ textAlign: 'center', padding: 48 }}>
+          <div className="loader-ring" style={{ margin: '0 auto' }} />
+          <p className="loader-text" style={{ marginTop: 16 }}>ЗАГРУЗКА...</p>
+        </div>
       ) : submissions.length === 0 ? (
-        <div style={{ ...s.card, textAlign: 'center' as const, color: '#64748b', padding: '3rem' }}>
+        <div style={{
+          padding: '48px 24px',
+          border: '1px dashed rgba(0,229,255,0.2)',
+          borderRadius: 16,
+          textAlign: 'center',
+          color: 'var(--text-dim)',
+        }}>
           {filter === 'submitted' ? 'Нет отчётов, ожидающих проверки' : 'Отчётов не найдено'}
         </div>
       ) : (
-        submissions.map(sub => (
-          <div key={sub.id} style={s.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-                  <strong>{sub.employee_full_name}</strong>
-                  <span style={s.badge(sub.status)}>{STATUS_LABELS[sub.status] || sub.status}</span>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                  {sub.period_name}
-                  {sub.role_name && ` • ${sub.role_name}`}
-                  {sub.submitted_at && ` • ${new Date(sub.submitted_at).toLocaleDateString('ru-RU')}`}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {submissions.map(sub => {
+            const score = computeScore(sub.kpi_values)
+            const scoreColor = score === null ? 'var(--text-dim)'
+              : score >= 90 ? 'var(--accent3)'
+              : score >= 70 ? 'var(--warn)'
+              : 'var(--danger)'
+
+            return (
+              <div
+                key={sub.id}
+                className="cyber-card"
+                style={{ '--accent-color': sub.status === 'approved' ? 'var(--accent3)' : sub.status === 'rejected' ? 'var(--danger)' : 'var(--warn)' } as React.CSSProperties}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{sub.employee_full_name}</span>
+                      <span className={`badge ${STATUS_CLASS[sub.status] || 'badge-dim'}`}>
+                        {STATUS_LABEL[sub.status] || sub.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                      {sub.period_name}
+                      {sub.role_name && ` · ${sub.role_name}`}
+                      {sub.submitted_at && ` · ${new Date(sub.submitted_at).toLocaleDateString('ru-RU')}`}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                    {score !== null && (
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 22, fontWeight: 700, color: scoreColor }}>
+                          {score}%
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>оценка</div>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {sub.status === 'approved' && (
+                        <a
+                          href={`/api/reports/${sub.id}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cyber-btn cyber-btn-primary"
+                          style={{ textDecoration: 'none', padding: '7px 14px', fontSize: 12 }}
+                        >
+                          📄 PDF
+                        </a>
+                      )}
+                      <button
+                        className="cyber-btn cyber-btn-primary"
+                        style={{ padding: '7px 16px', fontSize: 13 }}
+                        onClick={() => router.push(`/review/${sub.id}`)}
+                      >
+                        Открыть →
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                {sub.status === 'approved' && (
-                  <a
-                    href={`/api/reports/${sub.id}/pdf`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      padding: '0.4rem 0.75rem', background: '#7c3aed', color: 'white',
-                      borderRadius: '4px', textDecoration: 'none', fontSize: '0.8rem',
-                    }}
-                  >
-                    PDF
-                  </a>
-                )}
-                <button style={s.btn} onClick={() => router.push(`/review/${sub.id}`)}>
-                  Открыть
-                </button>
-              </div>
-            </div>
-          </div>
-        ))
+            )
+          })}
+        </div>
       )}
 
       {/* Команда */}
       {team.length > 0 && (
-        <div style={{ marginTop: '2rem' }}>
-          <h2 style={{ fontSize: '1rem', color: '#64748b', marginBottom: '0.75rem' }}>
-            Моя команда ({team.length})
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+        <div style={{ marginTop: 40 }}>
+          <div className="cyber-title" style={{ marginBottom: 16 }}>
+            МОЯ КОМАНДА ({team.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
             {team.map(m => (
-              <div key={m.redmine_id} style={{ ...s.card, marginBottom: 0, padding: '1rem' }}>
-                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{m.full_name}</div>
-                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.2rem' }}>
+              <div
+                key={m.redmine_id}
+                className="cyber-card"
+                style={{ padding: 14, '--accent-color': 'rgba(0,229,255,0.2)' } as React.CSSProperties}
+              >
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{m.full_name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 3 }}>
                   {m.role_name || m.position_id}
                 </div>
                 {m.department_name && (
-                  <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.1rem' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2, opacity: 0.7 }}>
                     {m.department_name}
                   </div>
                 )}

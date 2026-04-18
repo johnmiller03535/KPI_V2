@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (шаг B: KpiEngineService + обновлённые эндпоинты)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-17 (шаг D: Форма руководителя + PDF + Dark Cyber фронт)
 
 ## О проекте
 
@@ -275,6 +275,55 @@ kpi-portal/
 - `POST /generate-summary`: 65 трудозатрат, 4 binary_auto + 2 binary_manual, completion_pct=80%
 - `GET /score`: возвращает partial_score=100.0, total_weight=100, scored_weight=80
 - `PATCH` с binary_manual_override: score обновляется, awaiting_manual_input=False, completion_pct → 90%
+
+## Шаг C — Бэкенд binary_manual + Dark Cyber фронт (2026-04-17)
+
+### ИЗМЕНЕНИЕ 1 — Два новых эндпоинта review.py
+- `GET /api/review/{id}/pending-manual` → `PendingManualResponse` — список binary_manual KPI, ожидающих ручной оценки
+- `PATCH /api/review/{id}/binary-manual` → `ScoreResponse` — выставить score 0 или 100, пишет AuditLog
+- Оба проверяют принадлежность отчёта подчинённому через `_get_effective_subordinate_ids`
+- PATCH проверяет `status == submitted` (409 если уже approved/rejected), score ∈ {0, 100} (422 иначе)
+- После записи пересчитывает `partial_score` через `kpi_engine_service.compute_score_from_kpi_values`
+
+### ИЗМЕНЕНИЕ 2 — Критический баг subordination_service.py
+- `_to_unit()` возвращал `role_info["unit"]` (длинная строка "Руководство") вместо `role_info["role_id"]` ("РУК_ЗАМД_004")
+- `subordination.json` использует role_id в качестве ключей — fix: возвращать `role_info["role_id"]`
+- `get_subordinates()` пытался конвертировать role_ids через несуществующую map — fix: возвращать role_ids напрямую
+- Результат: manager видел 0 подчинённых → после исправления видит корректную команду
+
+### ИЗМЕНЕНИЕ 3 — _role_ids_to_pos_ids в review.py
+- `employees.position_id` хранит числовой pos_id ("71"), а не role_id ("ЦТР_НАЧ_071")
+- Добавлен helper `_role_ids_to_pos_ids()` через `kpi_mapping_service.get_role_info(rid)["pos_id"]`
+- Используется в `_get_effective_subordinate_ids` и `get_my_team`
+
+### ИЗМЕНЕНИЕ 4 — Dark Cyber дизайн-система
+- `frontend/src/styles/cyber.css` — CSS custom properties (--bg, --accent, --card, etc.), компоненты: `.cyber-card`, `.cyber-btn`, `.cyber-title`, `.badge-*`, `.loader-ring`, `.progress-bar-wrap`
+- `frontend/src/app/layout.tsx` — `import '@/styles/cyber.css'`
+- Шрифты: Orbitron (заголовки/числа), Exo 2 (текст)
+- Глобальный сетчатый фон через `body::before` (псевдоэлемент с CSS grid)
+
+### ИЗМЕНЕНИЕ 5 — Полная переработка фронтенда
+- `frontend/src/app/kpi/[submissionId]/page.tsx` — три секции (binary_auto / numeric / binary_manual), loader overlay, debounce 800ms для числового ввода, кнопка submit заблокирована при наличии несохранённых числовых KPI
+- Новые компоненты: `KpiCard`, `NumericInput`, `ScoreHeader`, `SectionTitle`, `StatusBadge`
+- `frontend/src/app/review/page.tsx` — Dark Cyber список отчётов, фильтры (submitted/approved/rejected/все), client-side вычисление score из kpi_values, сетка команды
+
+## Шаг D — Форма руководителя + PDF (2026-04-17)
+
+### ИЗМЕНЕНИЕ 1 — report_service.py: поддержка нового формата kpi_values
+- `_build_context()` полностью переписан для работы с `kpi_values` (JSON) вместо legacy binary полей
+- Группировка kpi_values по `kpi_type`: binary_auto + numeric → `specific_kpis`; binary_manual с is_common → дисциплина/распорядок/охрана труда
+- Поиск common KPI по фрагменту критерия: "исполнительской дисциплин", "трудового распорядка", "охран"
+- `total_result` вычисляется из реальных score, не hardcoded
+- Обратная совместимость: если kpi_values пустой — использует старые текстовые поля (bin_discipline_summary и т.д.)
+
+### ИЗМЕНЕНИЕ 2 — Страница детальной проверки (полная переработка)
+- `frontend/src/app/review/[submissionId]/page.tsx` — три секции + панель решения в Dark Cyber стиле
+- **Секция 1 — binary_auto**: read-only, показывает criterion, AI summary, score (Orbitron), confidence bar, бейдж "Требует внимания" при requires_review
+- **Секция 2 — numeric**: read-only, показывает plan_value, fact_value, score%
+- **Секция 3 — binary_manual**: интерактивная — кнопки-карточки [✅ ВЫПОЛНЕНО] / [❌ НЕ ВЫПОЛНЕНО], опциональный комментарий, сохранение через `PATCH /api/review/{id}/binary-manual`, обновление локального state без перезагрузки
+- **Модальное окно отклонения**: overlay с backdropFilter, textarea min 10 символов, кнопка "Подтвердить" заблокирована пока < 10
+- **Панель решения**: "Утвердить" заблокирована если `pending_manual_count > 0`; "Предпросмотр PDF" через `/api/reports/{id}/pdf`
+- Для утверждённых отчётов — кнопка "Скачать PDF"
 
 ## Сессия 2026-04-17 — Тестирование и исправления
 

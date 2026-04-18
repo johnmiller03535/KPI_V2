@@ -1,15 +1,30 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 
-type KpiValue = {
+// ─── Типы ────────────────────────────────────────────────────────────────────
+
+type KpiItem = {
   indicator: string
   criterion: string
+  formula_type: string
   weight: number
-  plan_value: string | number
-  fact_value?: string | number | null
+  is_common: boolean
+  cumulative: boolean
+  kpi_type: string
+  score: number | null
+  confidence: number | null
+  summary: string | null
+  awaiting_manual_input: boolean
+  requires_fact_input: boolean
+  fact_value: number | null
+  parsed_thresholds: any[] | null
+  requires_review: boolean
+  reviewer_comment?: string
+  reviewed_at?: string
+  plan_value?: string | number
 }
 
 type Submission = {
@@ -23,16 +38,423 @@ type Submission = {
   bin_discipline_summary: string | null
   bin_schedule_summary: string | null
   bin_safety_summary: string | null
-  kpi_values: KpiValue[] | null
+  kpi_values: KpiItem[] | null
   submitted_at: string | null
+  ai_generated_at: string | null
 }
 
-const STATUS_LABELS: Record<string, string> = {
+// ─── Константы ───────────────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<string, string> = {
   submitted: 'Ожидает проверки',
   approved:  'Утверждён',
-  rejected:  'Возвращён на доработку',
+  rejected:  'Возвращён',
   draft:     'Черновик',
 }
+const STATUS_CLASS: Record<string, string> = {
+  submitted: 'badge-warn',
+  approved:  'badge-success',
+  rejected:  'badge-fail',
+  draft:     'badge-dim',
+}
+
+// ─── Хелперы ─────────────────────────────────────────────────────────────────
+
+function computeScore(kpiValues: KpiItem[] | null): number | null {
+  if (!kpiValues || kpiValues.length === 0) return null
+  const scored = kpiValues.filter(k => k.score !== null && k.score !== undefined)
+  if (scored.length === 0) return null
+  const sw = scored.reduce((s, k) => s + k.weight, 0)
+  if (sw === 0) return null
+  return Math.round(scored.reduce((s, k) => s + (k.score ?? 0) * k.weight, 0) / sw)
+}
+
+function scoreColor(score: number | null): string {
+  if (score === null) return 'var(--text-dim)'
+  if (score >= 90) return 'var(--accent3)'
+  if (score >= 70) return 'var(--warn)'
+  return 'var(--danger)'
+}
+
+function pendingCount(kpiValues: KpiItem[] | null): number {
+  if (!kpiValues) return 0
+  return kpiValues.filter(k => k.kpi_type === 'binary_manual' && k.awaiting_manual_input).length
+}
+
+// ─── Компонент: карточка binary_auto ─────────────────────────────────────────
+
+function BinaryAutoCard({ item }: { item: KpiItem }) {
+  const sc = item.score
+  const accent = sc === null ? 'var(--text-dim)' : sc >= 90 ? 'var(--accent3)' : sc >= 70 ? 'var(--warn)' : 'var(--danger)'
+
+  return (
+    <div
+      className="cyber-card"
+      style={{ '--accent-color': accent } as React.CSSProperties}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            {item.is_common && (
+              <span className="badge badge-dim" style={{ fontSize: 10 }}>Общий</span>
+            )}
+            {item.requires_review && (
+              <span className="badge badge-warn" style={{ fontSize: 10 }}>Требует внимания</span>
+            )}
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{item.weight}%</span>
+          </div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: 'var(--text)' }}>
+            {item.criterion}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: item.summary ? 10 : 0 }}>
+            {item.indicator}
+          </div>
+          {item.summary && (
+            <div style={{
+              background: 'rgba(0,229,255,0.04)',
+              border: '1px solid rgba(0,229,255,0.1)',
+              borderRadius: 8,
+              padding: '10px 12px',
+              fontSize: 12,
+              color: 'var(--text)',
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+            }}>
+              {item.summary}
+            </div>
+          )}
+          {item.confidence !== null && item.confidence !== undefined && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+                Уверенность AI: {item.confidence}%
+              </div>
+              <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.1)', borderRadius: 2, maxWidth: 120 }}>
+                <div style={{ width: `${item.confidence}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
+              </div>
+            </div>
+          )}
+        </div>
+        {sc !== null && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 26, fontWeight: 700, color: accent, lineHeight: 1 }}>
+              {Math.round(sc)}%
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>оценка AI</div>
+          </div>
+        )}
+        {sc === null && (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--text-dim)' }}>—</div>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>нет оценки</div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Компонент: карточка numeric ─────────────────────────────────────────────
+
+function NumericCard({ item }: { item: KpiItem }) {
+  const sc = item.score
+  const accent = sc === null ? 'rgba(0,229,255,0.2)' : sc >= 90 ? 'var(--accent3)' : sc >= 70 ? 'var(--warn)' : 'var(--danger)'
+
+  return (
+    <div
+      className="cyber-card"
+      style={{ '--accent-color': accent } as React.CSSProperties}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            {item.is_common && <span className="badge badge-dim" style={{ fontSize: 10 }}>Общий</span>}
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{item.weight}%</span>
+          </div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 3, color: 'var(--text)' }}>
+            {item.criterion}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>
+            {item.indicator}
+            {item.formula_type && ` · ${item.formula_type}`}
+          </div>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>ПЛАН</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+                {item.plan_value ?? '—'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>ФАКТ</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: item.fact_value !== null ? 'var(--accent)' : 'var(--text-dim)' }}>
+                {item.fact_value !== null && item.fact_value !== undefined ? item.fact_value : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          {sc !== null ? (
+            <>
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 26, fontWeight: 700, color: accent, lineHeight: 1 }}>
+                {Math.round(sc)}%
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>выполнение</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--text-dim)' }}>—</div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>нет факта</div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Компонент: карточка binary_manual (интерактивная) ────────────────────────
+
+function BinaryManualCard({
+  item,
+  index,
+  submissionId,
+  submissionStatus,
+  onScored,
+}: {
+  item: KpiItem
+  index: number
+  submissionId: string
+  submissionStatus: string
+  onScored: (index: number, score: number, comment: string) => void
+}) {
+  const [localScore, setLocalScore] = useState<number | null>(item.score ?? null)
+  const [comment, setComment] = useState(item.reviewer_comment || '')
+  const [saving, setSaving] = useState(false)
+
+  const canEdit = submissionStatus === 'submitted'
+
+  async function handleScore(score: number) {
+    if (!canEdit || saving) return
+    setSaving(true)
+    try {
+      await api.patch(`/review/${submissionId}/binary-manual`, {
+        kpi_index: index,
+        score,
+        comment: comment || '',
+      })
+      setLocalScore(score)
+      onScored(index, score, comment)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка при сохранении оценки')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const accent = localScore === null ? 'rgba(0,229,255,0.15)'
+    : localScore === 100 ? 'var(--accent3)'
+    : 'var(--danger)'
+
+  return (
+    <div
+      className="cyber-card"
+      style={{ '--accent-color': accent } as React.CSSProperties}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+        {item.is_common && <span className="badge badge-dim" style={{ fontSize: 10 }}>Общий</span>}
+        {localScore === null && canEdit && (
+          <span className="badge badge-warn" style={{ fontSize: 10 }}>Требует оценки</span>
+        )}
+        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{item.weight}%</span>
+      </div>
+      <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: 'var(--text)' }}>
+        {item.criterion}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 14 }}>
+        {item.indicator}
+      </div>
+
+      {/* Кнопки оценки */}
+      {canEdit && (
+        <>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+            <button
+              onClick={() => handleScore(100)}
+              disabled={saving}
+              style={{
+                flex: 1,
+                padding: '12px 8px',
+                borderRadius: 10,
+                border: `2px solid ${localScore === 100 ? 'var(--accent3)' : 'rgba(0,255,157,0.2)'}`,
+                background: localScore === 100 ? 'rgba(0,255,157,0.15)' : 'rgba(0,255,157,0.04)',
+                color: localScore === 100 ? 'var(--accent3)' : 'rgba(0,255,157,0.6)',
+                cursor: saving ? 'wait' : 'pointer',
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: 'Exo 2, sans-serif',
+                transition: 'all 0.2s',
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              ✅ ВЫПОЛНЕНО
+            </button>
+            <button
+              onClick={() => handleScore(0)}
+              disabled={saving}
+              style={{
+                flex: 1,
+                padding: '12px 8px',
+                borderRadius: 10,
+                border: `2px solid ${localScore === 0 ? 'var(--danger)' : 'rgba(255,59,92,0.2)'}`,
+                background: localScore === 0 ? 'rgba(255,59,92,0.15)' : 'rgba(255,59,92,0.04)',
+                color: localScore === 0 ? 'var(--danger)' : 'rgba(255,59,92,0.6)',
+                cursor: saving ? 'wait' : 'pointer',
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: 'Exo 2, sans-serif',
+                transition: 'all 0.2s',
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              ❌ НЕ ВЫПОЛНЕНО
+            </button>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>Комментарий (необязательно)</div>
+            <textarea
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              placeholder="Пояснение к оценке..."
+              rows={2}
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 8,
+                color: 'var(--text)',
+                fontSize: 12,
+                fontFamily: 'Exo 2, sans-serif',
+                padding: '8px 10px',
+                resize: 'vertical',
+                outline: 'none',
+              }}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Статус (только просмотр) */}
+      {!canEdit && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {localScore === 100 && <span style={{ color: 'var(--accent3)', fontWeight: 700, fontSize: 14 }}>✅ ВЫПОЛНЕНО</span>}
+          {localScore === 0 && <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 14 }}>❌ НЕ ВЫПОЛНЕНО</span>}
+          {localScore === null && <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>— Не оценено</span>}
+          {item.reviewer_comment && (
+            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>· {item.reviewer_comment}</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Модальное окно отклонения ────────────────────────────────────────────────
+
+function RejectModal({
+  onConfirm,
+  onClose,
+  submitting,
+}: {
+  onConfirm: (reason: string) => void
+  onClose: () => void
+  submitting: boolean
+}) {
+  const [reason, setReason] = useState('')
+  const canSubmit = reason.trim().length >= 10
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'rgba(6,6,15,0.85)',
+      backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 20,
+    }}>
+      <div style={{
+        background: 'var(--bg2)',
+        border: '1px solid rgba(255,59,92,0.3)',
+        borderRadius: 16,
+        padding: 28,
+        maxWidth: 480,
+        width: '100%',
+        boxShadow: '0 0 40px rgba(255,59,92,0.15)',
+      }}>
+        <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 12, fontWeight: 900, letterSpacing: 2, color: 'var(--danger)', marginBottom: 8 }}>
+          ОТКЛОНЕНИЕ ОТЧЁТА
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 16 }}>
+          Укажите причину возврата на доработку
+        </div>
+        <textarea
+          autoFocus
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Опишите замечания (минимум 10 символов)..."
+          rows={4}
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            background: 'rgba(255,255,255,0.04)',
+            border: `1px solid ${canSubmit ? 'rgba(255,59,92,0.4)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 10,
+            color: 'var(--text)',
+            fontSize: 13,
+            fontFamily: 'Exo 2, sans-serif',
+            padding: '10px 12px',
+            resize: 'vertical',
+            outline: 'none',
+            marginBottom: 6,
+          }}
+        />
+        <div style={{ fontSize: 11, color: reason.trim().length < 10 ? 'var(--text-dim)' : 'var(--accent3)', marginBottom: 20 }}>
+          {reason.trim().length} / 10 символов минимум
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={() => onConfirm(reason.trim())}
+            disabled={!canSubmit || submitting}
+            style={{
+              flex: 1,
+              padding: '11px 0',
+              borderRadius: 8,
+              border: 'none',
+              background: canSubmit && !submitting ? 'var(--danger)' : 'rgba(255,59,92,0.2)',
+              color: canSubmit && !submitting ? '#fff' : 'rgba(255,59,92,0.4)',
+              fontWeight: 700,
+              fontSize: 13,
+              fontFamily: 'Exo 2, sans-serif',
+              cursor: canSubmit && !submitting ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s',
+            }}
+          >
+            {submitting ? 'Отправка...' : 'Подтвердить'}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="cyber-btn"
+            style={{ padding: '11px 20px', fontSize: 13 }}
+          >
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Главный компонент ────────────────────────────────────────────────────────
 
 export default function ReviewDetailPage({
   params,
@@ -41,185 +463,334 @@ export default function ReviewDetailPage({
 }) {
   const { submissionId } = params
   const router = useRouter()
+
   const [submission, setSubmission] = useState<Submission | null>(null)
   const [loading, setLoading] = useState(true)
-  const [comment, setComment] = useState('')
   const [deciding, setDeciding] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
 
   useEffect(() => {
+    if (!localStorage.getItem('user')) { router.push('/login'); return }
     api.get(`/review/submissions/${submissionId}`)
       .then(res => setSubmission(res.data))
       .catch(() => router.push('/review'))
       .finally(() => setLoading(false))
   }, [submissionId, router])
 
-  async function handleDecide(approved: boolean) {
-    if (!approved && !comment.trim()) {
-      alert('Укажите причину возврата на доработку')
-      return
-    }
-    if (!confirm(approved ? 'Утвердить отчёт?' : 'Вернуть на доработку?')) return
+  // Обновить оценку binary_manual в локальном state
+  const handleManualScored = useCallback((index: number, score: number, comment: string) => {
+    setSubmission(prev => {
+      if (!prev?.kpi_values) return prev
+      const updated = prev.kpi_values.map((item, i) => {
+        if (i !== index) return item
+        return { ...item, score, awaiting_manual_input: false, reviewer_comment: comment }
+      })
+      return { ...prev, kpi_values: updated }
+    })
+  }, [])
+
+  async function handleDecide(approved: boolean, rejectReason?: string) {
     setDeciding(true)
     try {
       await api.post(`/review/submissions/${submissionId}/decide`, {
         approved,
-        comment: comment || null,
+        comment: rejectReason || null,
       })
-      alert(approved ? 'Отчёт утверждён' : 'Отчёт возвращён на доработку')
+      setShowRejectModal(false)
       router.push('/review')
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Ошибка при сохранении решения')
+      alert(err.response?.data?.detail || 'Ошибка при принятии решения')
     } finally {
       setDeciding(false)
     }
   }
 
-  const s: Record<string, any> = {
-    page:     { padding: '2rem', fontFamily: 'sans-serif', maxWidth: '860px', margin: '0 auto' },
-    card:     { background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.5rem', marginBottom: '1.5rem' },
-    label:    { display: 'block', fontSize: '0.8rem', color: '#64748b', marginBottom: '0.4rem', fontWeight: 500 },
-    textBox:  { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.875rem', fontSize: '0.875rem', color: '#1e293b', lineHeight: 1.6, whiteSpace: 'pre-wrap' as const, minHeight: '60px' },
-    textarea: { width: '100%', padding: '0.625rem', border: '1px solid #ddd', borderRadius: '6px', fontSize: '0.875rem', minHeight: '80px', resize: 'vertical' as const, boxSizing: 'border-box' as const },
-    btnGreen: { padding: '0.625rem 1.5rem', background: '#22c55e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 },
-    btnRed:   { padding: '0.625rem 1.5rem', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 600 },
-    h2:       { marginTop: 0, fontSize: '1.1rem', color: '#1e293b' },
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="loader-ring" style={{ margin: '0 auto' }} />
+          <p className="loader-text" style={{ marginTop: 16 }}>ЗАГРУЗКА...</p>
+        </div>
+      </div>
+    )
   }
 
-  if (loading) return <div style={s.page}><p style={{ color: '#64748b' }}>Загрузка...</p></div>
-  if (!submission) return <div style={s.page}><p>Отчёт не найден</p></div>
-
-  async function downloadPdf(label: string) {
-    const token = localStorage.getItem('access_token')
-    const res = await fetch(`/api/reports/${submissionId}/pdf`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    })
-    if (res.ok) {
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `KPI_${submission!.employee_full_name}_${submission!.period_name}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } else {
-      alert('Ошибка генерации PDF')
-    }
+  if (!submission) {
+    return (
+      <div style={{ maxWidth: 720, margin: '60px auto', textAlign: 'center', color: 'var(--text-dim)' }}>
+        Отчёт не найден
+      </div>
+    )
   }
 
+  const kpiValues = submission.kpi_values || []
+  const binaryAuto   = kpiValues.filter(k => k.kpi_type === 'binary_auto')
+  const numericItems = kpiValues.filter(k => k.kpi_type === 'numeric')
+  const binaryManual = kpiValues.filter(k => k.kpi_type === 'binary_manual')
+
+  // Индексы binary_manual в исходном массиве kpi_values
+  const binaryManualIndexes = kpiValues.reduce<number[]>((acc, k, i) => {
+    if (k.kpi_type === 'binary_manual') acc.push(i)
+    return acc
+  }, [])
+
+  const score = computeScore(kpiValues)
+  const pending = pendingCount(submission.kpi_values)
   const canDecide = submission.status === 'submitted'
+  const canApprove = canDecide && pending === 0
 
   return (
-    <div style={s.page}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <a href="/review" style={{ color: '#2563eb', fontSize: '0.875rem' }}>← Проверка отчётов</a>
-        <h1 style={{ margin: '0.5rem 0 0.25rem' }}>{submission.employee_full_name}</h1>
-        <p style={{ color: '#64748b', margin: 0, fontSize: '0.875rem' }}>
-          {submission.period_name}
-          {submission.role_name && ` • ${submission.role_name}`}
-          {submission.submitted_at && ` • ${new Date(submission.submitted_at).toLocaleDateString('ru-RU')}`}
-          {' • '}
-          <strong style={{
-            color: submission.status === 'approved' ? '#22c55e'
-                 : submission.status === 'rejected' ? '#ef4444'
-                 : '#f59e0b',
-          }}>
-            {STATUS_LABELS[submission.status] || submission.status}
-          </strong>
-        </p>
-      </div>
-
-      {/* Бинарные KPI */}
-      <div style={s.card}>
-        <h2 style={s.h2}>Описание выполненных работ</h2>
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label style={s.label}>Исполнительская дисциплина (30%)</label>
-          <div style={s.textBox}>{submission.bin_discipline_summary || '—'}</div>
-        </div>
-        <div style={{ marginBottom: '1.25rem' }}>
-          <label style={s.label}>Соблюдение трудового распорядка (10%)</label>
-          <div style={s.textBox}>{submission.bin_schedule_summary || '—'}</div>
-        </div>
-        <div>
-          <label style={s.label}>Охрана труда (10%)</label>
-          <div style={s.textBox}>{submission.bin_safety_summary || '—'}</div>
-        </div>
-      </div>
-
-      {/* Числовые KPI */}
-      {submission.kpi_values && submission.kpi_values.length > 0 && (
-        <div style={s.card}>
-          <h2 style={s.h2}>Специфические показатели</h2>
-          {submission.kpi_values.map((kpi, idx) => (
-            <div key={idx} style={{
-              borderBottom: idx < submission.kpi_values!.length - 1 ? '1px solid #f1f5f9' : 'none',
-              paddingBottom: '1rem', marginBottom: idx < submission.kpi_values!.length - 1 ? '1rem' : 0,
-            }}>
-              <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                {kpi.criterion}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '0.5rem' }}>
-                {kpi.indicator} • Вес: {kpi.weight}% • План: {kpi.plan_value}
-              </div>
-              <div>
-                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Факт: </span>
-                <strong>{kpi.fact_value ?? '—'}</strong>
-              </div>
-            </div>
-          ))}
-        </div>
+    <>
+      {showRejectModal && (
+        <RejectModal
+          onConfirm={reason => handleDecide(false, reason)}
+          onClose={() => setShowRejectModal(false)}
+          submitting={deciding}
+        />
       )}
 
-      {/* Решение */}
-      {canDecide ? (
-        <div style={s.card}>
-          <h2 style={s.h2}>Решение</h2>
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={s.label}>Комментарий (обязателен при возврате)</label>
-            <textarea
-              style={s.textarea}
-              value={comment}
-              onChange={e => setComment(e.target.value)}
-              placeholder="Укажите замечания или комментарий..."
-            />
+      <div style={{ maxWidth: 820, margin: '0 auto', padding: '32px 20px', position: 'relative', zIndex: 1 }}>
+
+        {/* Хедер */}
+        <div style={{ marginBottom: 28 }}>
+          <button
+            onClick={() => router.push('/review')}
+            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 16, fontFamily: 'Exo 2, sans-serif' }}
+          >
+            ← Проверка отчётов
+          </button>
+          <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 14, fontWeight: 900, letterSpacing: 3, color: 'var(--accent)', marginBottom: 6, textShadow: 'var(--glow)' }}>
+            KPI ПОРТАЛ
           </div>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <button style={{ ...s.btnGreen, opacity: deciding ? 0.6 : 1 }} onClick={() => handleDecide(true)} disabled={deciding}>
-              Утвердить
-            </button>
-            <button style={{ ...s.btnRed, opacity: deciding ? 0.6 : 1 }} onClick={() => handleDecide(false)} disabled={deciding}>
-              Вернуть на доработку
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <h1 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
+                {submission.employee_full_name}
+              </h1>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)', display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+                <span>{submission.period_name}</span>
+                {submission.role_name && <span>· {submission.role_name}</span>}
+                {submission.submitted_at && (
+                  <span>· {new Date(submission.submitted_at).toLocaleDateString('ru-RU')}</span>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span className={`badge ${STATUS_CLASS[submission.status] || 'badge-dim'}`} style={{ fontSize: 12 }}>
+                {STATUS_LABEL[submission.status] || submission.status}
+              </span>
+              {score !== null && (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 28, fontWeight: 700, color: scoreColor(score), lineHeight: 1 }}>
+                    {score}%
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>итоговая оценка</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Баннер: ожидают ручной оценки */}
+        {pending > 0 && canDecide && (
+          <div style={{
+            padding: '12px 16px',
+            borderRadius: 10,
+            background: 'rgba(255,184,0,0.08)',
+            border: '1px solid rgba(255,184,0,0.3)',
+            color: 'var(--warn)',
+            fontSize: 13,
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <span>⚠</span>
+            <span>Необходимо оценить <strong>{pending}</strong> {pending === 1 ? 'показатель' : pending < 5 ? 'показателя' : 'показателей'} вручную перед утверждением</span>
+          </div>
+        )}
+
+        {/* ─── Секция 1: AI-оценённые KPI ─────────────────────────────────────── */}
+        {binaryAuto.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div className="cyber-title" style={{ marginBottom: 14 }}>
+              🤖 AI-ОЦЕНКА · {binaryAuto.length} ПОКАЗАТЕЛЕЙ
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {binaryAuto.map((item, i) => (
+                <BinaryAutoCard key={i} item={item} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Секция 2: Числовые KPI ──────────────────────────────────────────── */}
+        {numericItems.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div className="cyber-title" style={{ marginBottom: 14 }}>
+              📊 ЧИСЛОВЫЕ ПОКАЗАТЕЛИ · {numericItems.length} ПОКАЗАТЕЛЕЙ
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {numericItems.map((item, i) => (
+                <NumericCard key={i} item={item} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Секция 3: Ручная оценка ─────────────────────────────────────────── */}
+        {binaryManual.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div className="cyber-title" style={{ marginBottom: 14 }}>
+              ✋ РУЧНАЯ ОЦЕНКА · {binaryManual.length} ПОКАЗАТЕЛЕЙ
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {binaryManual.map((item, localIdx) => (
+                <BinaryManualCard
+                  key={localIdx}
+                  item={item}
+                  index={binaryManualIndexes[localIdx]}
+                  submissionId={submissionId}
+                  submissionStatus={submission.status}
+                  onScored={handleManualScored}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Секция 4: Без новой структуры (legacy binary поля) ──────────────── */}
+        {kpiValues.length === 0 && (
+          submission.bin_discipline_summary || submission.bin_schedule_summary || submission.bin_safety_summary
+        ) && (
+          <div style={{ marginBottom: 32 }}>
+            <div className="cyber-title" style={{ marginBottom: 14 }}>
+              📋 ОПИСАНИЕ ВЫПОЛНЕННЫХ РАБОТ
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { label: 'Исполнительская дисциплина (30%)', value: submission.bin_discipline_summary },
+                { label: 'Соблюдение трудового распорядка (10%)', value: submission.bin_schedule_summary },
+                { label: 'Охрана труда (10%)', value: submission.bin_safety_summary },
+              ].filter(x => x.value).map((x, i) => (
+                <div key={i} className="cyber-card" style={{ '--accent-color': 'rgba(0,229,255,0.2)' } as React.CSSProperties}>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 6 }}>{x.label}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                    {x.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Панель решения ──────────────────────────────────────────────────── */}
+        {canDecide ? (
+          <div style={{
+            padding: '20px 24px',
+            borderRadius: 14,
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.03)',
+            display: 'flex',
+            gap: 12,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}>
+            <button
+              onClick={() => handleDecide(true)}
+              disabled={!canApprove || deciding}
+              title={!canApprove ? `Необходимо оценить ${pending} показателей` : undefined}
+              style={{
+                padding: '11px 24px',
+                borderRadius: 10,
+                border: 'none',
+                background: canApprove && !deciding
+                  ? 'linear-gradient(135deg, rgba(0,255,157,0.3), rgba(0,255,157,0.1))'
+                  : 'rgba(0,255,157,0.06)',
+                color: canApprove && !deciding ? 'var(--accent3)' : 'rgba(0,255,157,0.3)',
+                fontWeight: 700,
+                fontSize: 14,
+                fontFamily: 'Exo 2, sans-serif',
+                cursor: canApprove && !deciding ? 'pointer' : 'not-allowed',
+                border: `1px solid ${canApprove ? 'rgba(0,255,157,0.4)' : 'rgba(0,255,157,0.1)'}`,
+                transition: 'all 0.2s',
+              } as React.CSSProperties}
+            >
+              {deciding ? 'Сохранение...' : '✅ Утвердить'}
             </button>
             <button
-              onClick={() => downloadPdf('preview')}
+              onClick={() => setShowRejectModal(true)}
+              disabled={deciding}
               style={{
-                padding: '0.625rem 1.25rem',
-                background: '#64748b', color: 'white', border: 'none',
-                borderRadius: '6px', cursor: 'pointer', fontSize: '0.875rem',
+                padding: '11px 24px',
+                borderRadius: 10,
+                border: '1px solid rgba(255,59,92,0.4)',
+                background: 'rgba(255,59,92,0.08)',
+                color: 'var(--danger)',
+                fontWeight: 700,
+                fontSize: 14,
+                fontFamily: 'Exo 2, sans-serif',
+                cursor: deciding ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+                opacity: deciding ? 0.6 : 1,
+              }}
+            >
+              ❌ Отклонить
+            </button>
+            <a
+              href={`/api/reports/${submissionId}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: '11px 20px',
+                borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.04)',
+                color: 'var(--text-dim)',
+                fontWeight: 600,
+                fontSize: 13,
+                fontFamily: 'Exo 2, sans-serif',
+                textDecoration: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
               }}
             >
               📄 Предпросмотр PDF
-            </button>
+            </a>
           </div>
-        </div>
-      ) : (
-        <div style={{ padding: '1rem', background: '#f1f5f9', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.875rem', color: '#64748b' }}>
-            Статус: <strong>{STATUS_LABELS[submission.status] || submission.status}</strong>
-          </span>
-          {submission.status === 'approved' && (
-            <button
-              onClick={() => downloadPdf('download')}
-              style={{
-                padding: '0.5rem 1rem', background: '#7c3aed', color: 'white',
-                border: 'none', borderRadius: '6px', cursor: 'pointer',
-                fontSize: '0.875rem', fontWeight: 600,
-              }}
+        ) : submission.status === 'approved' ? (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{
+              padding: '12px 16px', borderRadius: 10,
+              border: '1px solid rgba(0,255,157,0.2)',
+              background: 'rgba(0,255,157,0.06)',
+              color: 'var(--accent3)', fontSize: 13, fontWeight: 600,
+            }}>
+              ✅ Отчёт утверждён
+            </div>
+            <a
+              href={`/api/reports/${submissionId}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cyber-btn cyber-btn-primary"
+              style={{ textDecoration: 'none', padding: '11px 20px', fontSize: 13 }}
             >
               📄 Скачать PDF
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+            </a>
+          </div>
+        ) : submission.status === 'rejected' ? (
+          <div style={{
+            padding: '12px 16px', borderRadius: 10,
+            border: '1px solid rgba(255,59,92,0.2)',
+            background: 'rgba(255,59,92,0.06)',
+            color: 'var(--danger)', fontSize: 13, fontWeight: 600,
+          }}>
+            ❌ Отчёт возвращён на доработку
+          </div>
+        ) : null}
+
+      </div>
+    </>
   )
 }
