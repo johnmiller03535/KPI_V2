@@ -23,14 +23,12 @@ class Settings(BaseSettings):
     # chat_id финансового блока через запятую, напр. "123456,654321"
     finance_telegram_ids: str = ""
 
-    # Claude
-    anthropic_api_key: Optional[str] = None
+    # GigaChat (основной AI-провайдер)
+    gigachat_api_key: str = ""
 
-    # Gemini
-    gemini_api_key: Optional[str] = None
-
-    # OpenAI
-    openai_api_key: str = ""
+    # YandexGPT (резервный AI-провайдер)
+    yandex_api_key: str = ""
+    yandex_folder_id: str = ""
 
     # App
     app_env: str = "development"
