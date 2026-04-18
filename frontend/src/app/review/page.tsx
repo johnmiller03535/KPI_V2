@@ -239,6 +239,6 @@ export default function ReviewPage() {
         </div>
       )}
     </div>
-    </div>  {/* minHeight wrapper */}
+    </div>
   )
 }

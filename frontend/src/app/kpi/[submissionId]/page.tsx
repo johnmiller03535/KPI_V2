@@ -423,7 +423,7 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         )}
 
       </div>
-      </div>  {/* minHeight wrapper */}
+      </div>
     </>
   )
 }

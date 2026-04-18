@@ -793,7 +793,7 @@ export default function ReviewDetailPage({
         ) : null}
 
       </div>
-      </div>  {/* minHeight wrapper */}
+      </div>
     </>
   )
 }
