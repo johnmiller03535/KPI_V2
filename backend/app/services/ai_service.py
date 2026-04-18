@@ -89,7 +89,7 @@ class YandexGPTProvider:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "modelUri": f"gpt://{settings.yandex_folder_id}/yandexgpt-lite",
+                    "modelUri": f"gpt://{settings.yandex_folder_id}/yandexgpt-lite/latest",
                     "completionOptions": {
                         "stream": False,
                         "temperature": 0.3,
