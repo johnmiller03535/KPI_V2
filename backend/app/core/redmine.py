@@ -1,11 +1,10 @@
 import logging
 import warnings
-import urllib3
 import httpx
 from typing import Optional
 from app.config import settings
 
-warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 logger = logging.getLogger(__name__)
 
