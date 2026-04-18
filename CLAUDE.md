@@ -475,3 +475,73 @@ curl -X POST https://your-app.amvera.io/api/sync/run \
 - `reference/` монтируется как read-only — `KPI_Mapping.xlsx` и `subordination.json` должны быть в репо
 - Первый вход — войти через Redmine-учётку, затем вручную выставить роль `admin` в таблице `users`
 - Telegram-бот работает в polling-режиме — дополнительных настроек не требует
+
+## Сессия 2026-04-18 — Тестирование и доработка
+
+### AI-провайдеры (актуально)
+- PRIMARY: GigaChat (ngw.devices.sberbank.ru:9443, scope GIGACHAT_API_PERS)
+- FALLBACK: YandexGPT (llm.api.cloud.yandex.net, модель yandexgpt-lite)
+- ЗАГЛУШКА: score=100, confidence=50, summary="Требует ручной проверки"
+- Удалён: OpenAI (заблокирован в РФ — ошибка 403)
+- Gemini убран из цепочки (лимит 429 на бесплатном плане)
+
+### Переменные окружения (актуальные)
+- GIGACHAT_API_KEY — base64(client_id:client_secret) из developers.sber.ru/gigachat
+- YANDEX_API_KEY — API-ключ сервисного аккаунта из console.yandex.cloud
+- YANDEX_FOLDER_ID — ID каталога в Yandex Cloud
+- Удалены: OPENAI_API_KEY, GEMINI_API_KEY
+
+### Исправленные баги
+- redmine.py: verify=False добавлен во все 8 httpx.AsyncClient() вызовов
+  (Redmine использует самоподписанный сертификат — без этого 401 на логин)
+- redmine.py: import urllib3 удалён → warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+  (urllib3 недоступен как самостоятельный пакет в контейнере)
+- requirements.txt: fastapi==0.111.0 → fastapi>=0.104.0,<0.112.0
+  (версия 0.111.0 отсутствует на PyPI — сборка падала)
+- ai_service.py: gemini-1.5-flash → gemini-2.0-flash (модель переименована)
+- review/page.tsx, kpi/[submissionId]/page.tsx: убраны JSX-комментарии {/* */}
+  после закрывающих тегов — синтаксическая ошибка компилятора
+
+### Редизайн UI (Dark Cyber)
+- Все страницы переведены на дизайн-систему из reference/index.html
+- Шрифты: Orbitron (числа/заголовки), Exo 2 (текст)
+- Палитра: --bg #06060f, --accent #00e5ff, --accent3 #00ff9d, --danger #ff3b5c, --warn #ffb800
+- Ambient orbs, анимированная сетка-фон, fadeUp анимации
+- Sticky навигация с табами по ролям
+- Карточки: glassmorphism + цветная полоска 3px сверху
+
+### Результаты ручного тестирования
+✅ Авторизация (Chrome) — работает
+✅ Dashboard — дизайн, карточки, прогресс-бары
+✅ /kpi/{id} — дизайн, breadcrumb, секции AI/числовые/ручная
+✅ KpiEngineService — запускается, данные сохраняются в БД
+✅ Submit отчёта — статус меняется, read-only режим
+✅ /admin/periods — список периодов, создание
+
+⚠️ AI-генерация — работает через заглушку (нет рабочих ключей GigaChat/Yandex)
+⚠️ /review/{id} — не протестирована (нет submitted отчётов от подчинённых)
+⚠️ PDF — не протестирован (нет approved отчётов)
+❌ /admin, /admin/notifications, /finance — дизайн не применён
+
+### Архитектурные решения (зафиксированы к реализации)
+
+#### Activity Types → KPI маппинг
+Виды деятельности в Redmine привязываются к KPI-показателям должности.
+В KPI_Mapping.xlsx добавить колонку activity_names.
+KpiEngineService фильтрует time_entries по activity.name перед передачей в AI.
+Статус: ЗАПЛАНИРОВАНО (шаг I)
+
+#### Управление подчинённостью через UI
+Текущий subordination.json заменяется таблицей в PostgreSQL.
+Admin-панель → таб "Подчинённость": дерево иерархии + редактирование.
+Данные синхронизируются из Redmine (список сотрудников).
+Настройка подчинённости обязательна ДО создания задач на период.
+Статус: ЗАПЛАНИРОВАНО (шаг H)
+
+### Следующие шаги (приоритет)
+| Шаг | Задача | Статус |
+|---|---|---|
+| F | Смена AI: GigaChat primary + YandexGPT fallback | 🔄 В работе |
+| G | Дизайн admin-страниц + финансовый дашборд | ⏳ |
+| H | Подчинённость в БД + UI управления | ⏳ |
+| I | Activity types → KPI маппинг | ⏳ |
