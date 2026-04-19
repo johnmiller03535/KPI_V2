@@ -118,7 +118,7 @@ class AIService:
         if settings.yandex_api_key and settings.yandex_folder_id:
             try:
                 result = await YandexGPTProvider().complete(prompt)
-                logger.info("YandexGPT ответ получен")
+                logger.info("YandexGPT ответил успешно")
                 return result
             except Exception as e:
                 logger.warning(f"YandexGPT недоступен: {e}, используем заглушку")
@@ -169,11 +169,13 @@ class AIService:
                 if clean.startswith("json"):
                     clean = clean[4:]
             data = json.loads(clean.strip())
-            return {
+            result = {
                 "score": int(data.get("score", 100)),
                 "summary": str(data.get("summary", "")),
                 "confidence": int(data.get("confidence", 50)),
             }
+            logger.info(f"AI оценка завершена: score={result['score']}, confidence={result['confidence']}")
+            return result
         except Exception as e:
             logger.error(f"evaluate_binary_kpi error: {e}")
             return {
