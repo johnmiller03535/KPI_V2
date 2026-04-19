@@ -81,7 +81,7 @@ export default function LoginPage() {
             <input
               type="text"
               value={login}
-              onChange={e => setLogin(e.target.value)}
+              onChange={e => { setLogin(e.target.value); setError('') }}
               required
               autoComplete="username"
               className="login-input"
@@ -94,7 +94,7 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
+              onChange={e => { setPassword(e.target.value); setError('') }}
               required
               autoComplete="current-password"
               className="login-input"
