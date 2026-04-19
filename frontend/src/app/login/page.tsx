@@ -11,8 +11,8 @@ export default function LoginPage() {
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(e?: React.FormEvent | React.KeyboardEvent) {
+    e?.preventDefault()
     setError('')
     setLoading(true)
     try {
@@ -76,13 +76,14 @@ export default function LoginPage() {
         {/* Разделитель */}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '28px 0' }} />
 
-        <form onSubmit={handleSubmit} autoComplete="on">
+        <div>
           <div style={{ marginBottom: 20 }}>
             <label className="login-label">Логин (Redmine)</label>
             <input
               type="text"
               value={login}
               onChange={e => setLogin(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSubmit(e as any) }}
               required
               autoComplete="username"
               className="login-input"
@@ -96,6 +97,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSubmit(e as any) }}
               required
               autoComplete="current-password"
               className="login-input"
@@ -117,7 +119,8 @@ export default function LoginPage() {
           )}
 
           <button
-            type="submit"
+            type="button"
+            onClick={handleSubmit}
             disabled={loading}
             style={{
               width: '100%', padding: '14px',
@@ -150,7 +153,7 @@ export default function LoginPage() {
           >
             {loading ? 'ВХОД...' : 'ВОЙТИ'}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   )
