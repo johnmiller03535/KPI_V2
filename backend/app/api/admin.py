@@ -13,6 +13,8 @@ from app.models.period import Period
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
 from app.models.audit_log import AuditLog
 from app.models.sync_log import SyncLog
+from app.services.kpi_mapping_service import kpi_mapping_service
+from app.services.subordination_service import subordination_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -49,6 +51,86 @@ class DeptStats(BaseModel):
     submitted: int
     approved: int
     pending: int
+
+
+@router.get("/data-health")
+async def get_data_health(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Диагностика качества данных: сотрудники, KPI-маппинг, матрица подчинения."""
+    emp_result = await db.execute(
+        select(Employee).where(Employee.status == EmployeeStatus.active)
+    )
+    employees = emp_result.scalars().all()
+
+    # 1. Без position_id
+    without_position_id = [
+        {"redmine_id": e.redmine_id, "name": e.full_name}
+        for e in employees if not e.position_id
+    ]
+
+    # 2. position_id есть, но не найден в KPI_Mapping.xlsx
+    position_id_not_in_xlsx = []
+    for e in employees:
+        if e.position_id:
+            role_id = kpi_mapping_service.pos_id_to_role_id(str(e.position_id))
+            if not role_id:
+                position_id_not_in_xlsx.append({
+                    "redmine_id": e.redmine_id,
+                    "name": e.full_name,
+                    "position_id": e.position_id,
+                })
+
+    # 3. Без Telegram ID
+    without_telegram_id = [
+        {"redmine_id": e.redmine_id, "name": e.full_name, "position_id": e.position_id}
+        for e in employees if not e.telegram_id
+    ]
+
+    # 4. Проверка матрицы подчинения
+    subordination_service._load()
+    evaluator_map = subordination_service._data.get("evaluator", {})
+    all_manager_role_ids = {v for v in evaluator_map.values() if v}
+
+    employee_role_ids: set[str] = set()
+    for e in employees:
+        if e.position_id:
+            role_id = kpi_mapping_service.pos_id_to_role_id(str(e.position_id))
+            if role_id:
+                employee_role_ids.add(role_id)
+
+    managers_missing = sorted(all_manager_role_ids - employee_role_ids)
+    managers_found = len(all_manager_role_ids) - len(managers_missing)
+
+    # 5. Сотрудники с пустой KPI-структурой (position_id есть в xlsx, но нет индикаторов)
+    kpi_structure_empty = []
+    for e in employees:
+        if not e.position_id:
+            continue
+        role_id = kpi_mapping_service.pos_id_to_role_id(str(e.position_id))
+        if not role_id:
+            continue  # уже в position_id_not_in_xlsx
+        structure = kpi_mapping_service.get_kpi_structure(role_id)
+        if not structure.binary_auto and not structure.binary_manual and not structure.numeric:
+            kpi_structure_empty.append({
+                "redmine_id": e.redmine_id,
+                "name": e.full_name,
+                "position_id": e.position_id,
+                "role_id": role_id,
+            })
+
+    return {
+        "total_employees": len(employees),
+        "without_position_id": without_position_id,
+        "position_id_not_in_xlsx": position_id_not_in_xlsx,
+        "without_telegram_id": without_telegram_id,
+        "subordination_check": {
+            "managers_found": managers_found,
+            "managers_missing": managers_missing,
+        },
+        "kpi_structure_empty": kpi_structure_empty,
+    }
 
 
 @router.get("/overview", response_model=OrgOverview)
