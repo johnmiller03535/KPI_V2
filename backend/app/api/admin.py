@@ -363,6 +363,59 @@ async def create_missing_submissions(
     return {"created": created, "already_existed": len(existing_ids)}
 
 
+class SubordinationUpdate(BaseModel):
+    evaluator_role_id: Optional[str] = None
+
+
+@router.get("/subordination")
+async def get_subordination(
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Список всех должностей с их руководителями из subordination.json."""
+    all_roles = kpi_mapping_service.get_all_roles()
+    subordination_service._load()
+    evaluator_map = subordination_service._data.get("evaluator", {})
+
+    result = []
+    for role_info in sorted(all_roles, key=lambda r: r.get("pos_id", 0)):
+        role_id = role_info["role_id"]
+        evaluator_role_id = evaluator_map.get(role_id)  # None если нет в матрице / директорский уровень
+        in_matrix = role_id in evaluator_map
+
+        evaluator_name = None
+        if evaluator_role_id:
+            ev_info = kpi_mapping_service.get_role_info(evaluator_role_id)
+            evaluator_name = ev_info.get("role") if ev_info else evaluator_role_id
+
+        result.append({
+            "pos_id": role_info.get("pos_id"),
+            "role_id": role_id,
+            "role": role_info.get("role", ""),
+            "unit": role_info.get("unit", ""),
+            "management": role_info.get("management", ""),
+            "in_matrix": in_matrix,
+            "evaluator_role_id": evaluator_role_id,
+            "evaluator_name": evaluator_name,
+        })
+    return result
+
+
+@router.patch("/subordination/{role_id}")
+async def update_subordination(
+    role_id: str,
+    body: SubordinationUpdate,
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Обновить руководителя для должности в subordination.json."""
+    try:
+        subordination_service.write_evaluator(role_id, body.evaluator_role_id or None)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка записи: {e}")
+    return {"ok": True, "role_id": role_id, "evaluator_role_id": body.evaluator_role_id}
+
+
 @router.get("/sync-logs")
 async def get_sync_logs_admin(
     db: AsyncSession = Depends(get_db),

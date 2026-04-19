@@ -68,7 +68,7 @@ export default function AdminPage() {
   const [syncing, setSyncing] = useState(false)
   const [reminding, setReminding] = useState(false)
   const [actionResult, setActionResult] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'audit'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'audit' | 'subordination'>('overview')
 
   useEffect(() => {
     const user = localStorage.getItem('user')
@@ -203,12 +203,13 @@ export default function AdminPage() {
       )}
 
       {/* Табы */}
-      <div style={{ borderBottom: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', gap: 0 }}>
-        {(['overview', 'periods', 'employees', 'audit'] as const).map(tab => (
+      <div style={{ borderBottom: '1px solid #e2e8f0', marginBottom: '1.5rem', display: 'flex', gap: 0, flexWrap: 'wrap' }}>
+        {(['overview', 'periods', 'employees', 'subordination', 'audit'] as const).map(tab => (
           <button key={tab} style={s.tab(activeTab === tab)} onClick={() => setActiveTab(tab)}>
             {tab === 'overview' ? '📊 Обзор' :
              tab === 'periods' ? '📅 Периоды' :
-             tab === 'employees' ? '👥 Сотрудники' : '📋 Аудит'}
+             tab === 'employees' ? '👥 Сотрудники' :
+             tab === 'subordination' ? '🔗 Подчинённость' : '📋 Аудит'}
           </button>
         ))}
       </div>
@@ -396,9 +397,230 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Подчинённость */}
+      {activeTab === 'subordination' && (
+        <SubordinationTab />
+      )}
+
       {/* Аудит */}
       {activeTab === 'audit' && (
         <AuditTab />
+      )}
+    </div>
+  )
+}
+
+type SubordinationEntry = {
+  pos_id: number
+  role_id: string
+  role: string
+  unit: string
+  management: string
+  in_matrix: boolean
+  evaluator_role_id: string | null
+  evaluator_name: string | null
+}
+
+function SubordinationTab() {
+  const [entries, setEntries] = useState<SubordinationEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState<string>('')
+  const [saveResult, setSaveResult] = useState<{ role_id: string; ok: boolean } | null>(null)
+
+  useEffect(() => { loadData() }, [])
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const res = await api.get('/admin/subordination')
+      setEntries(res.data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Уникальные менеджеры для dropdown (те, у кого есть подчинённые)
+  const managerOptions = Array.from(
+    new Set(entries.filter(e => e.evaluator_role_id).map(e => e.evaluator_role_id!))
+  ).sort()
+
+  async function handleSave(roleId: string) {
+    setSaving(roleId)
+    setSaveResult(null)
+    try {
+      await api.patch(`/admin/subordination/${encodeURIComponent(roleId)}`, {
+        evaluator_role_id: editValue || null,
+      })
+      setSaveResult({ role_id: roleId, ok: true })
+      setEditingId(null)
+      // Обновить локальный state без перезагрузки
+      setEntries(prev => prev.map(e =>
+        e.role_id === roleId
+          ? {
+              ...e,
+              evaluator_role_id: editValue || null,
+              evaluator_name: entries.find(x => x.role_id === editValue)?.role || editValue || null,
+            }
+          : e
+      ))
+    } catch (err: any) {
+      setSaveResult({ role_id: roleId, ok: false })
+      alert(err.response?.data?.detail || 'Ошибка сохранения')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: 48 }}>
+      <div className="loader-ring" style={{ margin: '0 auto' }} />
+      <p className="loader-text" style={{ marginTop: 16 }}>ЗАГРУЗКА...</p>
+    </div>
+  )
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 13, letterSpacing: 2, color: 'var(--accent)', marginBottom: 4 }}>
+            МАТРИЦА ПОДЧИНЕНИЯ
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+            {entries.filter(e => e.in_matrix).length} должностей в матрице · {entries.length} всего в KPI_Mapping
+          </div>
+        </div>
+        <button className="cyber-btn" style={{ fontSize: 12 }} onClick={loadData}>
+          🔄 Обновить
+        </button>
+      </div>
+
+      {saveResult?.ok && (
+        <div className="alert-banner alert-success" style={{ marginBottom: 16 }}>
+          <span>✅</span>
+          <span>Сохранено успешно</span>
+        </div>
+      )}
+
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 16, overflow: 'hidden',
+      }}>
+        <table className="review-table">
+          <thead>
+            <tr>
+              <th>Должность</th>
+              <th>Подразделение</th>
+              <th>Управление</th>
+              <th>Руководитель</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.filter(e => e.in_matrix).map((entry, i) => (
+              <tr key={entry.role_id} className="fade-up" style={{ animationDelay: `${i * 0.02}s` }}>
+                <td>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{entry.role}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>{entry.role_id}</div>
+                </td>
+                <td style={{ color: 'var(--text-dim)', fontSize: 12 }}>{entry.unit}</td>
+                <td style={{ color: 'var(--text-dim)', fontSize: 12 }}>{entry.management}</td>
+                <td>
+                  {editingId === entry.role_id ? (
+                    <select
+                      value={editValue}
+                      onChange={e => setEditValue(e.target.value)}
+                      style={{
+                        background: 'rgba(0,0,0,0.4)',
+                        border: '1px solid rgba(0,229,255,0.4)',
+                        borderRadius: 6,
+                        color: 'var(--text)',
+                        fontSize: 12,
+                        padding: '4px 8px',
+                        width: '100%',
+                        maxWidth: 260,
+                      }}
+                    >
+                      <option value="">— Директорский уровень (null) —</option>
+                      {entries
+                        .filter(e => e.role_id !== entry.role_id)
+                        .map(e => (
+                          <option key={e.role_id} value={e.role_id}>
+                            {e.role} ({e.role_id})
+                          </option>
+                        ))
+                      }
+                    </select>
+                  ) : entry.evaluator_role_id ? (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{entry.evaluator_name || entry.evaluator_role_id}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{entry.evaluator_role_id}</div>
+                    </div>
+                  ) : (
+                    <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>— директор —</span>
+                  )}
+                </td>
+                <td>
+                  {editingId === entry.role_id ? (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="action-btn btn-fill"
+                        style={{ fontSize: 11, padding: '5px 12px' }}
+                        onClick={() => handleSave(entry.role_id)}
+                        disabled={saving === entry.role_id}
+                      >
+                        {saving === entry.role_id ? '...' : '💾 Сохранить'}
+                      </button>
+                      <button
+                        className="action-btn"
+                        style={{ fontSize: 11, padding: '5px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        onClick={() => setEditingId(null)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="action-btn btn-view"
+                      style={{ fontSize: 11, padding: '5px 12px' }}
+                      onClick={() => {
+                        setEditingId(entry.role_id)
+                        setEditValue(entry.evaluator_role_id || '')
+                        setSaveResult(null)
+                      }}
+                    >
+                      ✏️ Изменить
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {entries.filter(e => !e.in_matrix).length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>
+            Должности из KPI_Mapping, не включённые в матрицу подчинения ({entries.filter(e => !e.in_matrix).length}):
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {entries.filter(e => !e.in_matrix).map(e => (
+              <span key={e.role_id} style={{
+                fontSize: 11, color: 'var(--text-dim)',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 6, padding: '2px 8px',
+              }}>
+                {e.role_id}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

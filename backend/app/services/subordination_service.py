@@ -83,5 +83,30 @@ class SubordinationService:
         manager_unit = self._to_unit(str(manager_position_id))
         return evaluator == manager_unit
 
+    def get_all_managers(self) -> list[str]:
+        """Возвращает отсортированный список role_id, которые являются чьим-то руководителем."""
+        self._load()
+        managers = {v for v in self._data.get("evaluator", {}).values() if v}
+        return sorted(managers)
+
+    def reload(self):
+        """Сбрасывает кэш и перечитывает subordination.json."""
+        self._loaded = False
+        self._data = {}
+        self._load()
+
+    def write_evaluator(self, role_id: str, evaluator_role_id: Optional[str]):
+        """Обновляет evaluator в subordination.json и перезагружает сервис."""
+        self._load()
+        evaluator_map = self._data.get("evaluator", {})
+        if role_id not in evaluator_map:
+            raise ValueError(f"role_id '{role_id}' не найден в subordination.json")
+        evaluator_map[role_id] = evaluator_role_id
+        self._data["evaluator"] = evaluator_map
+        with open(SUBORDINATION_PATH, "w", encoding="utf-8") as f:
+            import json as _json
+            _json.dump(self._data, f, ensure_ascii=False, indent=2)
+        self.reload()
+
 
 subordination_service = SubordinationService()
