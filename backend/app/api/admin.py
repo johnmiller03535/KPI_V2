@@ -15,6 +15,7 @@ from app.models.audit_log import AuditLog
 from app.models.sync_log import SyncLog
 from app.services.kpi_mapping_service import kpi_mapping_service
 from app.services.subordination_service import subordination_service
+from app.services.people_import_service import rebuild_subordination_from_people_export
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -414,6 +415,21 @@ async def update_subordination(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка записи: {e}")
     return {"ok": True, "role_id": role_id, "evaluator_role_id": body.evaluator_role_id}
+
+
+@router.post("/subordination/rebuild-from-people-export")
+async def rebuild_subordination(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """
+    Перестроить subordination.json из файла выгрузки Redmine People плагина.
+    Файл должен лежать в reference/people_export.xlsx или docs/people_export.xlsx.
+    """
+    stats = await rebuild_subordination_from_people_export(db)
+    if stats["errors"]:
+        raise HTTPException(status_code=400, detail=stats)
+    return stats
 
 
 @router.get("/sync-logs")

@@ -428,6 +428,8 @@ function SubordinationTab() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<string>('')
   const [saveResult, setSaveResult] = useState<{ role_id: string; ok: boolean } | null>(null)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [rebuildResult, setRebuildResult] = useState<any>(null)
 
   useEffect(() => { loadData() }, [])
 
@@ -493,10 +495,42 @@ function SubordinationTab() {
             {entries.filter(e => e.in_matrix).length} должностей в матрице · {entries.length} всего в KPI_Mapping
           </div>
         </div>
-        <button className="cyber-btn" style={{ fontSize: 12 }} onClick={loadData}>
-          🔄 Обновить
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="cyber-btn" style={{ fontSize: 12 }} onClick={loadData}>
+            🔄 Обновить
+          </button>
+          <button
+            className="cyber-btn"
+            style={{ fontSize: 12, background: 'rgba(0,255,157,0.08)', borderColor: 'var(--accent3)' }}
+            onClick={async () => {
+              setRebuilding(true)
+              setRebuildResult(null)
+              try {
+                const res = await api.post('/admin/subordination/rebuild-from-people-export')
+                setRebuildResult({ ok: true, ...res.data })
+                await loadData()
+              } catch (err: any) {
+                setRebuildResult({ ok: false, error: err.response?.data?.detail || 'Ошибка' })
+              } finally {
+                setRebuilding(false)
+              }
+            }}
+            disabled={rebuilding}
+          >
+            {rebuilding ? '⏳ Импорт...' : '📥 Импорт из People'}
+          </button>
+        </div>
       </div>
+
+      {rebuildResult && (
+        <div className={`alert-banner ${rebuildResult.ok ? 'alert-success' : 'alert-error'}`} style={{ marginBottom: 16 }}>
+          {rebuildResult.ok ? (
+            <span>✅ Импортировано: {rebuildResult.mapped_pairs} пар · файл: {rebuildResult.file?.split('/').pop()}</span>
+          ) : (
+            <span>❌ {typeof rebuildResult.error === 'object' ? JSON.stringify(rebuildResult.error) : rebuildResult.error}</span>
+          )}
+        </div>
+      )}
 
       {saveResult?.ok && (
         <div className="alert-banner alert-success" style={{ marginBottom: 16 }}>
