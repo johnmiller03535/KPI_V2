@@ -22,6 +22,7 @@ export default function LoginPage() {
       localStorage.setItem('user', JSON.stringify(res.data.user))
       router.push('/dashboard')
     } catch (err: any) {
+      console.log('Login error:', err.response?.status, err.response?.data)
       setError(err.response?.data?.detail || 'Ошибка входа')
     } finally {
       setLoading(false)
@@ -75,13 +76,13 @@ export default function LoginPage() {
         {/* Разделитель */}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '28px 0' }} />
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="on">
           <div style={{ marginBottom: 20 }}>
             <label className="login-label">Логин (Redmine)</label>
             <input
               type="text"
               value={login}
-              onChange={e => { setLogin(e.target.value); setError('') }}
+              onChange={e => setLogin(e.target.value)}
               required
               autoComplete="username"
               className="login-input"
@@ -94,7 +95,7 @@ export default function LoginPage() {
             <input
               type="password"
               value={password}
-              onChange={e => { setPassword(e.target.value); setError('') }}
+              onChange={e => setPassword(e.target.value)}
               required
               autoComplete="current-password"
               className="login-input"
