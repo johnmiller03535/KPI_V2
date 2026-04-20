@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete
 from typing import Optional
 from app.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.user import User, UserRole
 from app.models.period import Period, PeriodStatus
 from app.models.period_exception import PeriodException
+from app.models.kpi_submission import KpiSubmission, SubmissionStatus
 from app.schemas.period import (
     PeriodCreate, PeriodResponse, PeriodExceptionCreate,
     PeriodExceptionResponse, CreateTasksResponse,
@@ -91,6 +92,46 @@ async def get_period(
     if not period:
         raise HTTPException(status_code=404, detail="Период не найден")
     return _period_to_response(period)
+
+
+@router.delete("/{period_id}")
+async def delete_period(
+    period_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Удалить период. Разрешено только для статуса draft без отправленных отчётов."""
+    result = await db.execute(select(Period).where(Period.id == period_id))
+    period = result.scalar_one_or_none()
+    if not period:
+        raise HTTPException(status_code=404, detail="Период не найден")
+
+    if period.status != PeriodStatus.draft:
+        raise HTTPException(
+            status_code=400,
+            detail="Нельзя удалить активный или закрытый период. Сначала переведите в статус draft",
+        )
+
+    # Проверяем отправленные/утверждённые отчёты
+    subs_result = await db.execute(
+        select(KpiSubmission).where(KpiSubmission.period_id == period.id)
+    )
+    submissions = subs_result.scalars().all()
+    blocked = [s for s in submissions if s.status in (SubmissionStatus.submitted, SubmissionStatus.approved)]
+    if blocked:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Период содержит {len(blocked)} отправленных или утверждённых отчётов. Удаление невозможно",
+        )
+
+    # Удаляем черновые отчёты
+    draft_ids = [s.id for s in submissions if s.status == SubmissionStatus.draft]
+    if draft_ids:
+        await db.execute(delete(KpiSubmission).where(KpiSubmission.id.in_(draft_ids)))
+
+    await db.delete(period)
+    await db.commit()
+    return {"message": "Период удалён", "deleted_submissions": len(draft_ids)}
 
 
 @router.post("/{period_id}/create-tasks", response_model=CreateTasksResponse)
