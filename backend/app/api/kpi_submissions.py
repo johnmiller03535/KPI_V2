@@ -136,19 +136,51 @@ async def load_summary_from_redmine(
         except Exception as e:
             logger.warning(f"Не удалось получить трудозатраты: {e}")
 
-    # Формируем текст-заготовку
-    if not time_entries:
-        summary_text = "Трудозатраты за период не зафиксированы в Redmine."
-    else:
-        lines: list[str] = []
-        for e in time_entries[:100]:
-            issue = e.get("issue") or {}
-            subject = issue.get("subject", "")
-            comment = (e.get("comments") or "").strip()
-            hours = e.get("hours", 0)
-            task_name = comment or subject or "—"
-            lines.append(f"- {task_name} ({hours} ч)")
-        summary_text = "\n".join(lines)
+    # ── Классификация записей ────────────────────────────────────────────────
+    _ABSENCE_KEYWORDS = ('отпуск', 'больничный', 'отгул', 'командировка', 'нетрудоспособ')
+    work_entries: list[dict] = []
+    absence_entries: list[dict] = []
+
+    for entry in time_entries:
+        issue_subject = (entry.get("issue") or {}).get("subject", "")
+        if not issue_subject:
+            # Запись без задачи в Redmine = отпуск/больничный/командировка
+            absence_entries.append(entry)
+        elif any(kw in issue_subject.lower() for kw in _ABSENCE_KEYWORDS):
+            absence_entries.append(entry)
+        else:
+            work_entries.append(entry)
+
+    absence_hours: float = sum(float(e.get("hours", 0)) for e in absence_entries)
+
+    # Уникальные названия рабочих задач (порядок сохранён, дубли убраны)
+    seen: set[str] = set()
+    unique_tasks: list[str] = []
+    for e in work_entries:
+        subject = (e.get("issue") or {}).get("subject", "")
+        if subject and subject not in seen:
+            seen.add(subject)
+            unique_tasks.append(subject)
+
+    # ── Получаем role_name для промпта ───────────────────────────────────────
+    role_name = ""
+    if sub.position_id:
+        _role_id = kpi_mapping_service.pos_id_to_role_id(str(sub.position_id))
+        if _role_id:
+            _info = kpi_mapping_service.get_role_info(_role_id)
+            role_name = (_info or {}).get("role", "")
+
+    period_start = str(period.date_start) if period else ""
+    period_end   = str(period.date_end)   if period else ""
+
+    # ── AI генерирует связный текст саммари ─────────────────────────────────
+    summary_text = await ai_service.generate_summary_from_tasks(
+        unique_tasks=unique_tasks,
+        role_name=role_name,
+        period_start=period_start,
+        period_end=period_end,
+        absence_hours=absence_hours,
+    )
 
     # Инициализируем kpi_values если ещё не заполнены
     if not sub.kpi_values:

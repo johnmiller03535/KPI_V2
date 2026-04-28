@@ -247,6 +247,54 @@ class AIService:
                 "ai_low_confidence": True,
             }
 
+    async def generate_summary_from_tasks(
+        self,
+        unique_tasks: list[str],
+        role_name: str = "",
+        period_start: str = "",
+        period_end: str = "",
+        absence_hours: float = 0.0,
+    ) -> str:
+        """
+        Генерирует связное саммари из списка уникальных названий задач через AI.
+        Вызывается при load-summary. Отпуск/больничный исключаются из основного текста,
+        упоминаются только как примечание.
+        """
+        tasks_text = "\n".join(f"- {t}" for t in unique_tasks) if unique_tasks else ""
+        absence_note = (
+            f"Примечание: {int(absence_hours)} ч — отпуск/больничный/командировка "
+            f"(не учитывается в оценке KPI)"
+            if absence_hours > 0 else ""
+        )
+
+        prompt = f"""Ты — система подготовки отчётов KPI государственного учреждения.
+Составь формальное саммари выполненных работ.
+
+Должность: {role_name}
+Период: {period_start} — {period_end}
+
+Выполненные задачи:
+{tasks_text if tasks_text else "(список пуст)"}
+
+{absence_note}
+
+Требования:
+1. Сгруппируй задачи по смыслу (аналитика, совещания, разработка, координация)
+2. Связный текст 3-5 предложений без упоминания часов и дат
+3. Деловой стиль: "Проведена...", "Подготовлены...", "Выполнена..."
+4. Только факты из списка — не придумывай
+5. Если список пуст — напиши: "Рабочие задачи за период не зафиксированы"
+"""
+
+        try:
+            result = await self._call_ai(prompt)
+            return result.strip()
+        except Exception as e:
+            logger.error(f"generate_summary_from_tasks error: {e}")
+            if not unique_tasks:
+                return "Рабочие задачи за период не зафиксированы."
+            return "\n".join(f"- {t}" for t in unique_tasks[:15])
+
     async def summarize_time_entries(self, time_entries: list[dict]) -> str:
         """Общее саммари по трудозатратам."""
         if not time_entries:
