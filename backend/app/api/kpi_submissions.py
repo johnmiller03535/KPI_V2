@@ -126,11 +126,15 @@ async def load_summary_from_redmine(
     period_result = await db.execute(select(Period).where(Period.id == sub.period_id))
     period = period_result.scalar_one_or_none()
 
+    # БАГ 1: трудозатраты берём у текущего пользователя из токена,
+    # а не у сотрудника привязанного к submission.
+    # Тестовые submissions создаются с чужими pos_id, но трудозатраты
+    # всегда принадлежат тому, кто работает с формой.
     time_entries: list[dict] = []
     if period:
         try:
             time_entries = await redmine_client.get_time_entries(
-                user_id=int(sub.employee_redmine_id),
+                user_id=int(current_user.redmine_id),
                 date_from=str(period.date_start),
                 date_to=str(period.date_end),
             )
@@ -183,8 +187,10 @@ async def load_summary_from_redmine(
         absence_hours=absence_hours,
     )
 
-    # Инициализируем kpi_values если ещё не заполнены
-    if not sub.kpi_values:
+    # БАГ 2: сбрасываем kpi_values при каждой загрузке саммари —
+    # иначе старые AI-оценки из предыдущих runs остаются в БД.
+    # Структура всегда перестраивается заново по актуальному pos_id.
+    if True:
         from app.services.threshold_parser import parse_thresholds as _parse_thresholds
         structure = kpi_mapping_service.get_kpi_structure_by_pos_id(sub.position_id or "")
         kpi_values: list[dict] = []
