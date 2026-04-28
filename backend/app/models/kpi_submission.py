@@ -46,6 +46,10 @@ class KpiSubmission(Base):
     #   "summary": "текст для binary_auto"}]
     kpi_values = Column(JSON, nullable=True)
 
+    # Саммари (новый флоу: сотрудник загружает и редактирует, AI оценивает при submit)
+    summary_text = Column(Text, nullable=True)           # текст-заготовка / отредактированный
+    summary_loaded_at = Column(DateTime(timezone=True), nullable=True)  # когда загружено из Redmine
+
     # AI-генерация
     ai_raw_summary = Column(Text, nullable=True)      # сырой ответ Claude
     ai_generated_at = Column(DateTime(timezone=True), nullable=True)

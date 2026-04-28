@@ -57,6 +57,7 @@ class KpiResult(BaseModel):
     fact_value: Optional[float] = None   # введённый сотрудником факт
     parsed_thresholds: Optional[list[dict]] = None  # для numeric KPI
     requires_review: bool = False        # confidence < 80
+    ai_low_confidence: bool = False      # уверенность AI < 50% (новый флоу)
 
 
 class KpiEngineResult(BaseModel):

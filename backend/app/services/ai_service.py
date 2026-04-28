@@ -184,6 +184,69 @@ class AIService:
                 "confidence": 50,
             }
 
+    async def evaluate_binary_kpi_from_summary(
+        self,
+        summary_text: str,
+        criterion: str,
+        indicator: str,
+        role_name: str = "",
+        period_name: str = "",
+    ) -> dict:
+        """
+        Оценить бинарный KPI на основе саммари сотрудника (новый флоу).
+        Вызывается в момент submit. Возвращает score/confidence/reasoning/ai_low_confidence.
+        """
+        prompt = f"""Ты — система оценки KPI государственного учреждения.
+Оцени выполнение показателя на основе саммари сотрудника.
+
+Показатель: {indicator}
+Критерий оценки: {criterion}
+Должность: {role_name}
+Период: {period_name}
+
+Саммари выполненных работ (составлено сотрудником на основе трудозатрат):
+{summary_text}
+
+Ответь ТОЛЬКО в формате JSON без markdown-блоков:
+{{"score": "выполнено" или "не выполнено", "confidence": число от 0.0 до 1.0, "reasoning": "краткое обоснование 1-2 предложения"}}"""
+
+        try:
+            response = await self._call_ai(prompt)
+            clean = response.strip()
+            if clean.startswith("```"):
+                clean = clean.split("```")[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            data = json.loads(clean.strip())
+
+            score_text = str(data.get("score", "")).lower()
+            score = 100 if ("выполнено" in score_text and "не выполнено" not in score_text) else 0
+
+            confidence = float(data.get("confidence", 0.5))
+            if confidence > 1.0:
+                confidence = confidence / 100.0  # нормализуем если пришло 0–100
+
+            reasoning = str(data.get("reasoning", ""))
+            ai_low_confidence = confidence < 0.5
+
+            logger.info(
+                f"AI (from summary): score={score}, confidence={confidence:.2f}, low={ai_low_confidence}"
+            )
+            return {
+                "score": score,
+                "confidence": confidence,
+                "reasoning": reasoning,
+                "ai_low_confidence": ai_low_confidence,
+            }
+        except Exception as e:
+            logger.error(f"evaluate_binary_kpi_from_summary error: {e}")
+            return {
+                "score": 100,
+                "confidence": 0.5,
+                "reasoning": "Данные для анализа отсутствуют. Требует ручной проверки.",
+                "ai_low_confidence": True,
+            }
+
     async def summarize_time_entries(self, time_entries: list[dict]) -> str:
         """Общее саммари по трудозатратам."""
         if not time_entries:

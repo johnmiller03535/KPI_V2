@@ -4,6 +4,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm.attributes import flag_modified
@@ -22,6 +23,7 @@ from app.schemas.kpi_submission import (
     SubmissionResponse,
     SubmissionNumericUpdate, ScoreResponse,
 )
+from app.models.period import Period
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
@@ -48,6 +50,8 @@ def _to_response(s: KpiSubmission) -> SubmissionResponse:
         bin_schedule_summary=s.bin_schedule_summary,
         bin_safety_summary=s.bin_safety_summary,
         kpi_values=s.kpi_values,
+        summary_text=s.summary_text,
+        summary_loaded_at=s.summary_loaded_at,
         ai_generated_at=s.ai_generated_at,
         reviewer_comment=s.reviewer_comment,
         submitted_at=s.submitted_at,
@@ -88,6 +92,142 @@ async def get_my_submission(
     if not sub:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
     return _to_response(sub)
+
+
+class SummaryUpdate(BaseModel):
+    summary_text: str
+
+
+@router.post("/my/{submission_id}/load-summary")
+async def load_summary_from_redmine(
+    submission_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Загружает трудозатраты из Redmine, формирует текст-заготовку саммари.
+    Если kpi_values ещё пустые — инициализирует структуру (binary_manual, numeric, binary_auto без оценок).
+    Сохраняет summary_text в БД. Возвращает {summary_text, time_entries_count, kpi_values}.
+    """
+    result = await db.execute(
+        select(KpiSubmission).where(
+            KpiSubmission.id == submission_id,
+            KpiSubmission.employee_redmine_id == current_user.redmine_id,
+        )
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+    if sub.status not in [SubmissionStatus.draft, SubmissionStatus.rejected]:
+        raise HTTPException(status_code=400, detail="Нельзя изменить отчёт в текущем статусе")
+
+    # Получить период для дат
+    period_result = await db.execute(select(Period).where(Period.id == sub.period_id))
+    period = period_result.scalar_one_or_none()
+
+    time_entries: list[dict] = []
+    if period:
+        try:
+            time_entries = await redmine_client.get_time_entries(
+                user_id=int(sub.employee_redmine_id),
+                date_from=str(period.date_start),
+                date_to=str(period.date_end),
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось получить трудозатраты: {e}")
+
+    # Формируем текст-заготовку
+    if not time_entries:
+        summary_text = "Трудозатраты за период не зафиксированы в Redmine."
+    else:
+        lines: list[str] = []
+        for e in time_entries[:100]:
+            issue = e.get("issue") or {}
+            subject = issue.get("subject", "")
+            comment = (e.get("comments") or "").strip()
+            hours = e.get("hours", 0)
+            task_name = comment or subject or "—"
+            lines.append(f"- {task_name} ({hours} ч)")
+        summary_text = "\n".join(lines)
+
+    # Инициализируем kpi_values если ещё не заполнены
+    if not sub.kpi_values:
+        from app.services.threshold_parser import parse_thresholds as _parse_thresholds
+        structure = kpi_mapping_service.get_kpi_structure_by_pos_id(sub.position_id or "")
+        kpi_values: list[dict] = []
+
+        for kpi in structure.binary_auto:
+            kpi_values.append({
+                "indicator": kpi.indicator, "criterion": kpi.criterion,
+                "formula_type": kpi.formula_type, "weight": kpi.weight,
+                "is_common": kpi.is_common, "cumulative": kpi.cumulative,
+                "kpi_type": "binary_auto", "score": None, "confidence": None,
+                "summary": None, "awaiting_manual_input": False,
+                "requires_fact_input": False, "fact_value": None,
+                "parsed_thresholds": None, "requires_review": False,
+                "ai_low_confidence": False,
+            })
+        for kpi in structure.binary_manual:
+            kpi_values.append({
+                "indicator": kpi.indicator, "criterion": kpi.criterion,
+                "formula_type": kpi.formula_type, "weight": kpi.weight,
+                "is_common": kpi.is_common, "cumulative": kpi.cumulative,
+                "kpi_type": "binary_manual", "score": None, "confidence": None,
+                "summary": None, "awaiting_manual_input": True,
+                "requires_fact_input": False, "fact_value": None,
+                "parsed_thresholds": None, "requires_review": False,
+                "ai_low_confidence": False,
+            })
+        for kpi in structure.numeric:
+            kpi_values.append({
+                "indicator": kpi.indicator, "criterion": kpi.criterion,
+                "formula_type": kpi.formula_type, "weight": kpi.weight,
+                "is_common": kpi.is_common, "cumulative": kpi.cumulative,
+                "kpi_type": "numeric", "score": None, "confidence": None,
+                "summary": None, "awaiting_manual_input": False,
+                "requires_fact_input": True, "fact_value": None,
+                "parsed_thresholds": [r.model_dump() for r in _parse_thresholds(kpi.thresholds)],
+                "requires_review": False, "ai_low_confidence": False,
+            })
+
+        sub.kpi_values = kpi_values
+        flag_modified(sub, "kpi_values")
+
+    sub.summary_text = summary_text
+    sub.summary_loaded_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(sub)
+
+    return {
+        "summary_text": summary_text,
+        "time_entries_count": len(time_entries),
+        "kpi_values": sub.kpi_values,
+    }
+
+
+@router.patch("/my/{submission_id}/summary")
+async def update_summary_text(
+    submission_id: str,
+    body: SummaryUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Сохраняет отредактированный текст саммари. Только для статусов draft/rejected."""
+    result = await db.execute(
+        select(KpiSubmission).where(
+            KpiSubmission.id == submission_id,
+            KpiSubmission.employee_redmine_id == current_user.redmine_id,
+        )
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+    if sub.status not in [SubmissionStatus.draft, SubmissionStatus.rejected]:
+        raise HTTPException(status_code=400, detail="Нельзя изменить отчёт в текущем статусе")
+
+    sub.summary_text = body.summary_text
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/my/{submission_id}/generate-summary", response_model=KpiEngineResult)
@@ -238,7 +378,10 @@ async def submit_for_review(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Отправить отчёт на проверку руководителю."""
+    """
+    Отправить отчёт на проверку руководителю.
+    В момент submit запускается AI-оценка binary_auto KPI по сохранённому summary_text.
+    """
     result = await db.execute(
         select(KpiSubmission).where(
             KpiSubmission.id == submission_id,
@@ -250,15 +393,54 @@ async def submit_for_review(
         raise HTTPException(status_code=404, detail="Отчёт не найден")
     if sub.status not in [SubmissionStatus.draft, SubmissionStatus.rejected]:
         raise HTTPException(status_code=400, detail="Отчёт уже отправлен")
+    if not sub.summary_text or not sub.summary_text.strip():
+        raise HTTPException(status_code=400, detail="Загрузите саммари перед отправкой")
 
+    # Название должности для промпта
+    role_name = ""
+    if sub.position_id:
+        role_id = kpi_mapping_service.pos_id_to_role_id(str(sub.position_id))
+        if role_id:
+            info = kpi_mapping_service.get_role_info(role_id)
+            role_name = (info or {}).get("role", "")
+
+    # AI-оценка всех binary_auto KPI по summary_text
+    kpi_values: list[dict] = list(sub.kpi_values) if sub.kpi_values else []
+    for item in kpi_values:
+        if item.get("kpi_type") != "binary_auto":
+            continue
+        try:
+            ai_result = await ai_service.evaluate_binary_kpi_from_summary(
+                summary_text=sub.summary_text,
+                criterion=item.get("criterion", ""),
+                indicator=item.get("indicator", ""),
+                role_name=role_name,
+                period_name=sub.period_name,
+            )
+            item["score"] = ai_result["score"]
+            # confidence храним как int 0-100 для совместимости
+            item["confidence"] = int(ai_result["confidence"] * 100)
+            item["summary"] = ai_result["reasoning"]
+            item["ai_low_confidence"] = ai_result["ai_low_confidence"]
+            item["requires_review"] = ai_result["ai_low_confidence"]
+        except Exception as e:
+            logger.warning(f"AI-оценка binary_auto не удалась для '{item.get('criterion', '')[:40]}': {e}")
+            item["score"] = 100
+            item["confidence"] = 50
+            item["summary"] = "Данные для анализа отсутствуют. Требует ручной проверки."
+            item["ai_low_confidence"] = True
+            item["requires_review"] = True
+
+    sub.kpi_values = kpi_values
+    flag_modified(sub, "kpi_values")
     sub.status = SubmissionStatus.submitted
     sub.submitted_at = datetime.now(timezone.utc)
+    sub.ai_generated_at = datetime.now(timezone.utc)
 
     # Обновить статус задачи в Redmine если есть
-    # status_id=26 — "На проверку" (из старого проекта)
     if sub.redmine_issue_id:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
                 await client.put(
                     f"{redmine_client.base_url}/issues/{sub.redmine_issue_id}.json",
                     headers={**redmine_client._headers(), "Content-Type": "application/json"},
@@ -327,11 +509,24 @@ async def _notify_manager_about_submission(
     role_info = kpi_mapping_service.get_role_info(emp.position_id)
     role_name = role_info["role"] if role_info else emp.position_id
 
+    # Вычислить AI-оценку и флаг низкой уверенности
+    ai_score_line = ""
+    low_conf_line = ""
+    if sub.kpi_values:
+        auto_items = [k for k in sub.kpi_values if k.get("kpi_type") == "binary_auto" and k.get("score") is not None]
+        if auto_items:
+            avg_score = round(sum(k["score"] for k in auto_items) / len(auto_items))
+            ai_score_line = f"\n⚡ AI-оценка binary KPI: <b>{avg_score}/100</b>"
+        low_conf_count = sum(1 for k in sub.kpi_values if k.get("ai_low_confidence"))
+        if low_conf_count:
+            low_conf_line = f"\n⚠️ {low_conf_count} показател{'ь' if low_conf_count == 1 else 'я' if low_conf_count < 5 else 'ей'} с низкой уверенностью AI"
+
     text = (
         f"📋 <b>Новый KPI-отчёт на проверку</b>\n\n"
         f"👤 Сотрудник: <b>{emp.full_name}</b>\n"
         f"💼 Должность: {role_name}\n"
-        f"📅 Период: {sub.period_name}\n\n"
+        f"📅 Период: {sub.period_name}"
+        f"{ai_score_line}{low_conf_line}\n\n"
         f"Выберите действие или откройте портал для детального просмотра."
     )
 

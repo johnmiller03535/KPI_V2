@@ -38,6 +38,8 @@ class SubmissionResponse(BaseModel):
     bin_schedule_summary: Optional[str]
     bin_safety_summary: Optional[str]
     kpi_values: Optional[Any]
+    summary_text: Optional[str] = None
+    summary_loaded_at: Optional[datetime] = None
     ai_generated_at: Optional[datetime]
     reviewer_comment: Optional[str]
     submitted_at: Optional[datetime]

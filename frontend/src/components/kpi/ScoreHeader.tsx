@@ -13,10 +13,11 @@ type Props = {
   scoreData: ScoreData | null
   reviewerComment: string | null
   isEditable: boolean
-  generating: boolean
+  summaryLoading: boolean
+  summaryLoaded: boolean
   submitting: boolean
   hasUnfilledNumeric: boolean
-  onGenerate: () => void
+  onLoadSummary: () => void
   onSubmit: () => void
   onBack: () => void
 }
@@ -37,8 +38,8 @@ const STATUS_COLOR: Record<string, string> = {
 
 export function ScoreHeader({
   employeeName, periodName, status, roleInfo, scoreData,
-  reviewerComment, isEditable, generating, submitting,
-  hasUnfilledNumeric, onGenerate, onSubmit, onBack,
+  reviewerComment, isEditable, summaryLoading, summaryLoaded, submitting,
+  hasUnfilledNumeric, onLoadSummary, onSubmit, onBack,
 }: Props) {
   const score = scoreData?.partial_score
   const completion = scoreData?.completion_pct ?? 0
@@ -176,23 +177,28 @@ export function ScoreHeader({
 
       {/* Кнопки действий */}
       {isEditable && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           <button
             className="cyber-btn cyber-btn-ai"
-            onClick={onGenerate}
-            disabled={generating || submitting}
+            onClick={onLoadSummary}
+            disabled={summaryLoading || submitting}
           >
-            {generating ? '⏳ Анализ...' : '⚡ Сгенерировать AI-оценку'}
+            {summaryLoading ? '⏳ Загрузка...' : summaryLoaded ? '🔄 Обновить саммари' : '📥 Загрузить саммари из Redmine'}
           </button>
           <button
             className="cyber-btn cyber-btn-success"
             onClick={onSubmit}
-            disabled={submitting || generating || hasUnfilledNumeric}
-            title={hasUnfilledNumeric ? 'Заполните все числовые показатели' : ''}
+            disabled={submitting || summaryLoading || !summaryLoaded || hasUnfilledNumeric}
+            title={!summaryLoaded ? 'Сначала загрузите саммари' : hasUnfilledNumeric ? 'Заполните числовые показатели' : ''}
           >
-            {submitting ? 'Отправка...' : '📤 Отправить на проверку'}
+            {submitting ? '⏳ AI анализирует...' : '📤 Отправить на проверку'}
           </button>
-          {hasUnfilledNumeric && (
+          {!summaryLoaded && !summaryLoading && (
+            <span style={{ fontSize: 12, color: 'var(--accent)', alignSelf: 'center' }}>
+              ← Загрузите саммари перед отправкой
+            </span>
+          )}
+          {summaryLoaded && hasUnfilledNumeric && (
             <span style={{ fontSize: 12, color: 'var(--warn)', alignSelf: 'center' }}>
               ⚠ Заполните числовые показатели
             </span>
