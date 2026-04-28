@@ -178,9 +178,11 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
   // --- Derived state ---
 
   const kpiValues: KpiResult[] = submission?.kpi_values || []
-  const binaryAuto   = kpiValues.filter(k => k.kpi_type === 'binary_auto')
-  const numeric      = kpiValues.filter(k => k.kpi_type === 'numeric')
-  const binaryManual = kpiValues.filter(k => k.kpi_type === 'binary_manual')
+  // Фильтрация строго по formula_type — is_common не влияет на блок
+  const _NUMERIC_TYPES = ['threshold', 'multi_threshold', 'quarterly_threshold']
+  const binaryAuto   = kpiValues.filter(k => k.formula_type === 'binary_auto')
+  const binaryManual = kpiValues.filter(k => k.formula_type === 'binary_manual')
+  const numeric      = kpiValues.filter(k => _NUMERIC_TYPES.includes(k.formula_type))
 
   const isEditable = submission?.status === 'draft' || submission?.status === 'rejected'
   const summaryLoaded = summaryText !== null

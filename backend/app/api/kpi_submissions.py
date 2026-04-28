@@ -15,6 +15,7 @@ from app.core.redmine import redmine_client
 from app.models.user import User
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
 from app.models.employee import Employee
+from app.services.ai_service import ai_service
 from app.services.kpi_mapping_service import kpi_mapping_service
 from app.services.kpi_engine_service import kpi_engine_service
 from app.services.threshold_parser import ThresholdRule, apply_threshold

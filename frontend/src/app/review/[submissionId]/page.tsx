@@ -79,7 +79,7 @@ function scoreColor(score: number | null): string {
 
 function pendingCount(kpiValues: KpiItem[] | null): number {
   if (!kpiValues) return 0
-  return kpiValues.filter(k => k.kpi_type === 'binary_manual' && k.awaiting_manual_input).length
+  return kpiValues.filter(k => k.formula_type === 'binary_manual' && k.awaiting_manual_input).length
 }
 
 // ─── Компонент: карточка binary_auto ─────────────────────────────────────────
@@ -526,13 +526,15 @@ export default function ReviewDetailPage({
   }
 
   const kpiValues = submission.kpi_values || []
-  const binaryAuto   = kpiValues.filter(k => k.kpi_type === 'binary_auto')
-  const numericItems = kpiValues.filter(k => k.kpi_type === 'numeric')
-  const binaryManual = kpiValues.filter(k => k.kpi_type === 'binary_manual')
+  // Фильтрация строго по formula_type — is_common не влияет на блок
+  const _NUMERIC_TYPES = ['threshold', 'multi_threshold', 'quarterly_threshold']
+  const binaryAuto   = kpiValues.filter(k => k.formula_type === 'binary_auto')
+  const numericItems = kpiValues.filter(k => _NUMERIC_TYPES.includes(k.formula_type))
+  const binaryManual = kpiValues.filter(k => k.formula_type === 'binary_manual')
 
   // Индексы binary_manual в исходном массиве kpi_values
   const binaryManualIndexes = kpiValues.reduce<number[]>((acc, k, i) => {
-    if (k.kpi_type === 'binary_manual') acc.push(i)
+    if (k.formula_type === 'binary_manual') acc.push(i)
     return acc
   }, [])
 
