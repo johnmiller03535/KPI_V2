@@ -28,6 +28,12 @@ router = APIRouter(prefix="/api/submissions", tags=["submissions"])
 
 
 def _to_response(s: KpiSubmission) -> SubmissionResponse:
+    role_name = None
+    if s.position_id:
+        role_id = kpi_mapping_service.pos_id_to_role_id(str(s.position_id))
+        if role_id:
+            info = kpi_mapping_service.get_role_info(role_id)
+            role_name = info.get("role") if info else None
     return SubmissionResponse(
         id=str(s.id),
         employee_redmine_id=s.employee_redmine_id,
@@ -35,6 +41,7 @@ def _to_response(s: KpiSubmission) -> SubmissionResponse:
         period_id=str(s.period_id),
         period_name=s.period_name,
         position_id=s.position_id,
+        role_name=role_name,
         redmine_issue_id=s.redmine_issue_id,
         status=s.status,
         bin_discipline_summary=s.bin_discipline_summary,

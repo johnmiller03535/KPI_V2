@@ -7,6 +7,7 @@ from app.models.period import Period, PeriodStatus
 from app.models.period_exception import PeriodException, ExceptionType
 from app.models.employee import Employee, EmployeeStatus
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
+from app.services.kpi_mapping_service import kpi_mapping_service
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,12 @@ class PeriodService:
 
         logger.info(f"Создание задач для периода '{period.name}': {len(employees)} сотрудников")
 
+        # Загружаем список трекеров из Redmine один раз
+        redmine_trackers: dict[str, int] = {}
+        if not dry_run:
+            redmine_trackers = await redmine_client.get_trackers()
+            logger.info(f"Загружено трекеров из Redmine: {len(redmine_trackers)}")
+
         for emp in employees:
             try:
                 # Проверить исключения
@@ -115,7 +122,17 @@ class PeriodService:
                     })
                     continue
 
-                tracker_id = await self._get_tracker_id(emp, project_id)
+                tracker_id = self._get_tracker_id(emp, project_id, redmine_trackers)
+
+                # Диагностическое логирование перед созданием задачи
+                _role_id = kpi_mapping_service.pos_id_to_role_id(str(emp.position_id)) if emp.position_id else None
+                _tracker_name = f"KPI_ОТЧЁТ_{_role_id}" if _role_id else "—"
+                logger.info(
+                    f"CREATE TASK | {emp.full_name} | login={emp.login} | "
+                    f"position_id={emp.position_id} | role_id={_role_id} | "
+                    f"tracker_name={_tracker_name} | tracker_id={tracker_id} | "
+                    f"project={project_id}"
+                )
 
                 issue = await redmine_client.create_issue(
                     project_id=project_id,
@@ -173,15 +190,14 @@ class PeriodService:
         )
         return stats
 
-    async def _get_tracker_id(self, employee: Employee, project_id: str) -> int:
+    def _get_tracker_id(self, employee: Employee, project_id: str,
+                        redmine_trackers: dict[str, int]) -> int:
         """
-        Временная реализация: возвращает фиксированный tracker_id.
-        В этапе 4 будет заменена на поиск по position_id из KPI_Mapping.
-
-        Из старого проекта: трекеры 186-277, по 10 на подразделение.
-        Берём первый трекер подразделения как fallback.
+        Возвращает tracker_id для сотрудника по его role_id.
+        Паттерн имени трекера: KPI_ОТЧЁТ_{role_id}, напр. KPI_ОТЧЁТ_ЦТР_КОН_075.
+        Если трекер не найден — fallback на первый трекер подразделения.
         """
-        dept_tracker_map = {
+        dept_tracker_fallback = {
             "kpi-ruk": 186,
             "kpi-org": 188,
             "kpi-pra": 196,
@@ -192,7 +208,31 @@ class PeriodService:
             "kpi-feo": 242,
             "kpi-iaa": 252,
         }
-        return dept_tracker_map.get(project_id, 186)
+        fallback = dept_tracker_fallback.get(project_id, 186)
+
+        if not employee.position_id:
+            logger.warning(f"{employee.login}: нет position_id, используем fallback tracker {fallback}")
+            return fallback
+
+        role_id = kpi_mapping_service.pos_id_to_role_id(str(employee.position_id))
+        if not role_id:
+            logger.warning(
+                f"{employee.login}: position_id={employee.position_id} не найден в KPI_Mapping, "
+                f"используем fallback tracker {fallback}"
+            )
+            return fallback
+
+        tracker_name = f"KPI_ОТЧЁТ_{role_id}"
+        tracker_id = redmine_trackers.get(tracker_name)
+        if not tracker_id:
+            logger.warning(
+                f"{employee.login}: трекер '{tracker_name}' не найден в Redmine, "
+                f"используем fallback tracker {fallback}"
+            )
+            return fallback
+
+        logger.info(f"{employee.login}: role_id={role_id}, tracker='{tracker_name}' (id={tracker_id})")
+        return tracker_id
 
 
 period_service = PeriodService()

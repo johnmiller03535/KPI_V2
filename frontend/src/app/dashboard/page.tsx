@@ -10,6 +10,7 @@ import { NavBar } from '@/components/NavBar'
 type Submission = {
   id: string
   period_name: string
+  role_name: string | null
   status: string
   submitted_at: string | null
   kpi_values: any[] | null
@@ -104,6 +105,12 @@ function MySubmissionCard({ sub }: { sub: Submission }) {
               {STATUS_LABEL[sub.status] || sub.status}
             </span>
           </div>
+
+          {sub.role_name && (
+            <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 6, opacity: 0.8 }}>
+              {sub.role_name}
+            </div>
+          )}
 
           {sub.submitted_at && (
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10 }}>

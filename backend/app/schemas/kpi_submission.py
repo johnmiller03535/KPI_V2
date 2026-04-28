@@ -31,6 +31,7 @@ class SubmissionResponse(BaseModel):
     period_id: str
     period_name: str
     position_id: Optional[str]
+    role_name: Optional[str] = None
     redmine_issue_id: Optional[int]
     status: str
     bin_discipline_summary: Optional[str]

@@ -185,5 +185,22 @@ class RedmineClient:
             except httpx.RequestError:
                 return []
 
+    async def get_trackers(self) -> dict[str, int]:
+        """Возвращает словарь {tracker_name: tracker_id} из Redmine."""
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            try:
+                response = await client.get(
+                    f"{self.base_url}/trackers.json",
+                    headers=self._headers(),
+                )
+                if response.status_code == 200:
+                    trackers = response.json().get("trackers", [])
+                    return {t["name"]: t["id"] for t in trackers}
+                logger.warning(f"get_trackers: status {response.status_code}")
+                return {}
+            except httpx.RequestError as e:
+                logger.error(f"get_trackers request error: {e}")
+                return {}
+
 
 redmine_client = RedmineClient()

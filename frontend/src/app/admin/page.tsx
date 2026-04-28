@@ -43,6 +43,16 @@ type DeptStats = {
   pending: number
 }
 
+type DismissedEmployee = {
+  redmine_id: string
+  name: string
+  position_id: string | null
+  role_id: string | null
+  role_name: string | null
+  unit: string | null
+  dismissed_at: string | null
+}
+
 // ─── Хелперы ──────────────────────────────────────────────────────────────────
 
 const PERIOD_STATUS_BADGE: Record<string, string> = {
@@ -99,6 +109,10 @@ export default function AdminPage() {
   const [reminding, setReminding] = useState(false)
   const [actionResult, setActionResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'subordination' | 'audit'>('overview')
+  const [showDismissedModal, setShowDismissedModal] = useState(false)
+  const [dismissedEmployees, setDismissedEmployees] = useState<DismissedEmployee[]>([])
+  const [loadingDismissed, setLoadingDismissed] = useState(false)
+  const [showNoTelegramModal, setShowNoTelegramModal] = useState(false)
 
   useEffect(() => {
     const user = localStorage.getItem('user')
@@ -168,6 +182,17 @@ export default function AdminPage() {
     } catch (e: any) {
       setActionResult({ ok: false, text: 'Ошибка: ' + (e.response?.data?.detail || e.message) })
     } finally { setReminding(false) }
+  }
+
+  async function handleShowDismissed() {
+    setShowDismissedModal(true)
+    if (dismissedEmployees.length > 0) return
+    setLoadingDismissed(true)
+    try {
+      const res = await api.get('/admin/employees/dismissed')
+      setDismissedEmployees(res.data)
+    } catch (e) { console.error(e) }
+    finally { setLoadingDismissed(false) }
   }
 
   const TABS = [
@@ -266,15 +291,22 @@ export default function AdminPage() {
             {/* Stat-карточки */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 28 }}>
               {[
-                { label: 'Всего',         value: overview.total_employees,               accent: '#00e5ff' },
-                { label: 'Активных',      value: overview.active_employees,              accent: '#00ff9d' },
-                { label: 'Уволенных',     value: overview.dismissed_employees,           accent: '#ff3b5c' },
-                { label: 'Без Telegram',  value: overview.employees_without_telegram,    accent: '#ffb800' },
-                { label: 'Без должности', value: overview.employees_without_position,    accent: '#ffb800' },
+                { label: 'Всего',         value: overview.total_employees,               accent: '#00e5ff',  onClick: undefined },
+                { label: 'Активных',      value: overview.active_employees,              accent: '#00ff9d',  onClick: undefined },
+                { label: 'Уволенных',     value: overview.dismissed_employees,           accent: '#ff3b5c',  onClick: handleShowDismissed },
+                { label: 'Без Telegram',  value: overview.employees_without_telegram,    accent: '#ffb800',  onClick: () => setShowNoTelegramModal(true) },
+                { label: 'Без должности', value: overview.employees_without_position,    accent: '#ffb800',  onClick: undefined },
               ].map(s => (
-                <div key={s.label} className="stat-card" style={{ '--card-accent': s.accent } as any}>
+                <div
+                  key={s.label}
+                  className="stat-card"
+                  style={{ '--card-accent': s.accent, cursor: s.onClick ? 'pointer' : 'default' } as any}
+                  onClick={s.onClick}
+                  title={s.onClick ? 'Нажмите для просмотра' : undefined}
+                >
                   <div className="stat-label">{s.label}</div>
                   <div className="stat-value" style={{ color: s.accent, textShadow: `0 0 20px ${s.accent}` }}>{s.value}</div>
+                  {s.onClick && <div style={{ fontSize: 10, color: s.accent, opacity: 0.7, marginTop: 4, fontFamily: 'Orbitron, monospace', letterSpacing: 1 }}>↗ подробнее</div>}
                 </div>
               ))}
             </div>
@@ -499,6 +531,142 @@ export default function AdminPage() {
         {/* ══ ТАБ: АУДИТ ══ */}
         {activeTab === 'audit' && <AuditTab />}
       </div>
+
+      {/* ══ МОДАЛЬНОЕ ОКНО: БЕЗ TELEGRAM ══ */}
+      {showNoTelegramModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(6,6,15,0.85)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowNoTelegramModal(false) }}
+        >
+          <div className="cyber-card" style={{ width: '100%', maxWidth: 760, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div className="cyber-title" style={{ fontSize: 18 }}>
+                <span style={{ color: '#ffb800' }}>●</span> Без Telegram ID
+              </div>
+              <button
+                onClick={() => setShowNoTelegramModal(false)}
+                style={{ background: 'none', border: '1px solid rgba(255,184,0,0.4)', borderRadius: 6, color: '#ffb800', cursor: 'pointer', padding: '4px 12px', fontFamily: 'Orbitron, monospace', fontSize: 11 }}
+              >
+                ✕ ЗАКРЫТЬ
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {noTgEmployees.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                  Все сотрудники привязаны к Telegram
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={TH}>ФИО</th>
+                      <th style={TH}>Должность (pos_id)</th>
+                      <th style={TH}>Подразделение</th>
+                      <th style={TH}>Redmine</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {noTgEmployees.map((e: any) => (
+                      <tr key={e.redmine_id}>
+                        <td style={{ ...TD, fontWeight: 600 }}>{e.full_name || e.name || '—'}</td>
+                        <td style={{ ...TD, color: 'var(--text-dim)', fontSize: 12, fontFamily: 'Orbitron, monospace' }}>
+                          {e.position_id || '—'}
+                        </td>
+                        <td style={{ ...TD, color: 'var(--text-dim)', fontSize: 12 }}>{e.department_name || '—'}</td>
+                        <td style={TD}>
+                          <a
+                            href={`https://kkp.rm.mosreg.ru/people/${e.redmine_id}/edit`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#ffb800', fontSize: 12, textDecoration: 'none', fontFamily: 'Orbitron, monospace' }}
+                          >
+                            ↗ Открыть
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ МОДАЛЬНОЕ ОКНО: УВОЛЕННЫЕ ══ */}
+      {showDismissedModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(6,6,15,0.85)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowDismissedModal(false) }}
+        >
+          <div className="cyber-card" style={{ width: '100%', maxWidth: 860, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div className="cyber-title" style={{ fontSize: 18 }}>
+                <span style={{ color: 'var(--danger)' }}>●</span> Уволенные сотрудники
+              </div>
+              <button
+                onClick={() => setShowDismissedModal(false)}
+                style={{ background: 'none', border: '1px solid rgba(255,59,92,0.4)', borderRadius: 6, color: 'var(--danger)', cursor: 'pointer', padding: '4px 12px', fontFamily: 'Orbitron, monospace', fontSize: 11 }}
+              >
+                ✕ ЗАКРЫТЬ
+              </button>
+            </div>
+            {loadingDismissed ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-dim)' }}>
+                <div className="loader-ring" style={{ margin: '0 auto 12px' }} />
+                Загрузка...
+              </div>
+            ) : (
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {dismissedEmployees.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                    Уволенных сотрудников нет
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={TH}>ФИО</th>
+                        <th style={TH}>Должность</th>
+                        <th style={TH}>Подразделение</th>
+                        <th style={TH}>Дата увольнения</th>
+                        <th style={TH}>Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dismissedEmployees.map((e) => (
+                        <tr key={e.redmine_id}>
+                          <td style={{ ...TD, fontWeight: 600 }}>{e.name}</td>
+                          <td style={{ ...TD, color: 'var(--text-dim)', fontSize: 12 }}>
+                            {e.role_name || e.position_id || '—'}
+                          </td>
+                          <td style={{ ...TD, color: 'var(--text-dim)', fontSize: 12 }}>{e.unit || '—'}</td>
+                          <td style={{ ...TD, fontFamily: 'Orbitron, monospace', fontSize: 11, color: 'var(--text-dim)' }}>
+                            {e.dismissed_at || '—'}
+                          </td>
+                          <td style={TD}>
+                            <span className="badge badge-danger">Уволен</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -723,10 +891,12 @@ const ACTION_BADGE: Record<string, string> = {
 function AuditTab() {
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     api.get('/admin/audit-log?limit=50')
-      .then(res => setLogs(res.data))
+      .then(res => setLogs(Array.isArray(res.data) ? res.data : []))
+      .catch(e => setError(e?.response?.data?.detail || e?.message || 'Ошибка загрузки'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -734,6 +904,12 @@ function AuditTab() {
     <div style={{ textAlign: 'center', padding: 64 }}>
       <div className="loader-ring" style={{ margin: '0 auto' }} />
       <p className="loader-text" style={{ marginTop: 20 }}>ЗАГРУЗКА...</p>
+    </div>
+  )
+
+  if (error) return (
+    <div className="cyber-card" style={{ textAlign: 'center', color: 'var(--danger)', padding: 48, fontFamily: 'Exo 2, sans-serif' }}>
+      ⚠️ {error}
     </div>
   )
 
@@ -757,23 +933,23 @@ function AuditTab() {
             </tr>
           </thead>
           <tbody>
-            {logs.map((log: any) => (
-              <tr key={log.id}
+            {logs.map((log: any, idx: number) => (
+              <tr key={log?.id ?? idx}
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <td style={{ ...TD, fontWeight: 600 }}>{log.user_login || '—'}</td>
+                <td style={{ ...TD, fontWeight: 600 }}>{log?.user_login || '—'}</td>
                 <td style={TD}>
-                  <span className={ACTION_BADGE[log.action] || 'badge badge-dim'}>
-                    {log.action}
+                  <span className={ACTION_BADGE[log?.action] || 'badge badge-dim'}>
+                    {log?.action || '—'}
                   </span>
                 </td>
                 <td style={{ ...TD, fontSize: 12, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace' }}>
-                  {log.ip_address || '—'}
+                  {log?.ip_address || '—'}
                 </td>
                 <td style={{ ...TD, fontSize: 11, fontFamily: 'Orbitron, monospace', color: 'var(--text-dim)' }}>
-                  {log.created_at ? new Date(log.created_at).toLocaleString('ru-RU') : '—'}
+                  {log?.created_at ? new Date(log.created_at).toLocaleString('ru-RU') : '—'}
                 </td>
               </tr>
             ))}

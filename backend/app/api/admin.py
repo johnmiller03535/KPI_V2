@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.core.deps import require_role
+from app.core.redmine import redmine_client
 from app.models.user import User, UserRole
 from app.models.employee import Employee, EmployeeStatus
 from app.models.period import Period
@@ -16,6 +17,7 @@ from app.models.sync_log import SyncLog
 from app.services.kpi_mapping_service import kpi_mapping_service
 from app.services.subordination_service import subordination_service
 from app.services.people_import_service import rebuild_subordination_from_people_export
+from app.services.period_service import DEPT_PROJECT_MAP, CF_PERIOD, CF_ROLE_ID
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -271,6 +273,33 @@ async def get_dept_stats(
     return [DeptStats(**v) for v in sorted(dept_data.values(), key=lambda x: x["department_name"])]
 
 
+@router.get("/employees/dismissed")
+async def get_dismissed_employees(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Список уволенных сотрудников."""
+    result = await db.execute(
+        select(Employee).where(Employee.status == EmployeeStatus.dismissed)
+        .order_by(Employee.updated_at.desc())
+    )
+    employees = result.scalars().all()
+    items = []
+    for e in employees:
+        role_id = kpi_mapping_service.pos_id_to_role_id(str(e.position_id)) if e.position_id else None
+        role_info = kpi_mapping_service.get_role_info(role_id) if role_id else None
+        items.append({
+            "redmine_id": e.redmine_id,
+            "name": e.full_name,
+            "position_id": e.position_id,
+            "role_id": role_id,
+            "role_name": role_info.get("role") if role_info else None,
+            "unit": role_info.get("unit") if role_info else e.department_name,
+            "dismissed_at": e.updated_at.strftime("%Y-%m-%d") if e.updated_at else None,
+        })
+    return items
+
+
 @router.get("/employees/no-telegram")
 async def get_employees_no_telegram(
     db: AsyncSession = Depends(get_db),
@@ -430,6 +459,148 @@ async def rebuild_subordination(
     if stats["errors"]:
         raise HTTPException(status_code=400, detail=stats)
     return stats
+
+
+def _find_test_pos_ids() -> list[str]:
+    """Автоматически выбирает 3 pos_id с разными типами KPI для тестирования."""
+    all_roles = kpi_mapping_service.get_all_roles()
+
+    mixed: Optional[str] = None      # binary_auto + binary_manual + numeric
+    auto_only: Optional[str] = None  # только binary_auto
+    manager: Optional[str] = None    # начальник (НАЧ/ЗАМ/РУК в role_id)
+
+    for role_info in sorted(all_roles, key=lambda r: r.get("pos_id", 0)):
+        role_id = role_info["role_id"]
+        pos_id = str(role_info["pos_id"])
+        structure = kpi_mapping_service.get_kpi_structure(role_id)
+
+        has_auto   = len(structure.binary_auto) > 0
+        has_manual = len(structure.binary_manual) > 0
+        has_num    = len(structure.numeric) > 0
+        is_mgr     = any(k in role_id for k in ("НАЧ", "ЗАМ", "РУК"))
+
+        if mixed is None and has_auto and has_manual and has_num:
+            mixed = pos_id
+        if auto_only is None and has_auto and not has_manual and not has_num:
+            auto_only = pos_id
+        if manager is None and is_mgr and has_auto:
+            manager = pos_id
+
+        if mixed and auto_only and manager:
+            break
+
+    result: list[str] = []
+    for pid in (mixed, auto_only, manager):
+        if pid and pid not in result:
+            result.append(pid)
+    return result
+
+
+class TestSubmissionsCreate(BaseModel):
+    period_id: str
+    pos_ids: Optional[list[str]] = None  # если None — выбрать автоматически
+
+
+@router.post("/test/create-my-submissions")
+async def create_test_submissions(
+    body: TestSubmissionsCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """
+    Создаёт тестовые KPI-отчёты для текущего пользователя с разными pos_id.
+    Если pos_ids не переданы — выбирает 3 автоматически (смешанный / только auto / начальник).
+    Создаёт задачи в Redmine и записи в kpi_submissions.
+    """
+    period_result = await db.execute(select(Period).where(Period.id == body.period_id))
+    period = period_result.scalar_one_or_none()
+    if not period:
+        raise HTTPException(status_code=404, detail="Период не найден")
+
+    emp_result = await db.execute(
+        select(Employee).where(Employee.redmine_id == current_user.redmine_id)
+    )
+    employee = emp_result.scalar_one_or_none()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Запись сотрудника не найдена в БД")
+
+    selected_pos_ids = body.pos_ids or _find_test_pos_ids()
+    if not selected_pos_ids:
+        raise HTTPException(status_code=400, detail="Не удалось найти подходящие pos_id в KPI_Mapping")
+
+    redmine_trackers = await redmine_client.get_trackers()
+    project_id = DEPT_PROJECT_MAP.get(employee.department_code or "", "kpi-ruk")
+
+    dept_tracker_fallback: dict[str, int] = {
+        "kpi-ruk": 186, "kpi-org": 188, "kpi-pra": 196, "kpi-kza": 204,
+        "kpi-zpd": 212, "kpi-zpr": 222, "kpi-tsr": 232, "kpi-feo": 242, "kpi-iaa": 252,
+    }
+    fallback_tracker = dept_tracker_fallback.get(project_id, 186)
+
+    created = []
+    for pos_id in selected_pos_ids:
+        role_id = kpi_mapping_service.pos_id_to_role_id(str(pos_id))
+        if not role_id:
+            logger.warning(f"test/create-my-submissions: pos_id={pos_id} не найден в KPI_Mapping, пропуск")
+            continue
+
+        role_info = kpi_mapping_service.get_role_info(role_id) or {}
+        structure  = kpi_mapping_service.get_kpi_structure(role_id)
+
+        tracker_name = f"KPI_ОТЧЁТ_{role_id}"
+        tracker_id   = redmine_trackers.get(tracker_name, fallback_tracker)
+
+        subject = (
+            f"[ТЕСТ] Отчёт KPI — {employee.lastname} — {period.name} "
+            f"({role_info.get('role', pos_id)})"
+        )
+        description = (
+            f"<h4>Тестовый KPI-отчёт</h4>"
+            f"<p>pos_id: {pos_id} / role_id: {role_id}</p>"
+            f"<p>Сотрудник: {employee.full_name}</p>"
+            f"<p>Период: {period.name}</p>"
+        )
+        custom_fields = [
+            {"id": CF_PERIOD, "value": period.name},
+            {"id": CF_ROLE_ID, "value": str(pos_id)},
+        ]
+
+        issue = await redmine_client.create_issue(
+            project_id=project_id,
+            subject=subject,
+            description=description,
+            tracker_id=tracker_id,
+            assigned_to_id=int(employee.redmine_id),
+            custom_fields=custom_fields,
+        )
+
+        submission = KpiSubmission(
+            employee_redmine_id=employee.redmine_id,
+            employee_login=employee.login,
+            period_id=period.id,
+            period_name=period.name,
+            position_id=str(pos_id),
+            redmine_issue_id=issue["id"] if issue else None,
+            status=SubmissionStatus.draft,
+        )
+        db.add(submission)
+        await db.flush()
+
+        created.append({
+            "submission_id": str(submission.id),
+            "pos_id": str(pos_id),
+            "role_id": role_id,
+            "role_name": role_info.get("role", ""),
+            "kpi_counts": {
+                "binary_auto":   len(structure.binary_auto),
+                "binary_manual": len(structure.binary_manual),
+                "numeric":       len(structure.numeric),
+            },
+            "redmine_issue_id": issue["id"] if issue else None,
+        })
+
+    await db.commit()
+    return {"created": len(created), "submissions": created}
 
 
 @router.get("/sync-logs")
