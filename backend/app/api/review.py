@@ -163,7 +163,10 @@ async def get_submission_detail(
     sub = result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
-    if sub.employee_redmine_id not in subordinate_ids:
+    if (
+        sub.employee_redmine_id not in subordinate_ids
+        and sub.reviewer_redmine_id != current_user.redmine_id
+    ):
         raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
 
     emp_res = await db.execute(
@@ -188,7 +191,10 @@ async def decide_submission(
     sub = result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
-    if sub.employee_redmine_id not in subordinate_ids:
+    if (
+        sub.employee_redmine_id not in subordinate_ids
+        and sub.reviewer_redmine_id != current_user.redmine_id
+    ):
         raise HTTPException(status_code=403, detail="Нет доступа")
     if sub.status != SubmissionStatus.submitted:
         raise HTTPException(
@@ -289,7 +295,10 @@ async def get_pending_manual(
     sub = result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
-    if sub.employee_redmine_id not in subordinate_ids:
+    if (
+        sub.employee_redmine_id not in subordinate_ids
+        and sub.reviewer_redmine_id != current_user.redmine_id
+    ):
         raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
 
     emp_res = await db.execute(
@@ -338,7 +347,10 @@ async def score_binary_manual(
     sub = result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Отчёт не найден")
-    if sub.employee_redmine_id not in subordinate_ids:
+    if (
+        sub.employee_redmine_id not in subordinate_ids
+        and sub.reviewer_redmine_id != current_user.redmine_id
+    ):
         raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
     if sub.status in (SubmissionStatus.approved, SubmissionStatus.rejected):
         raise HTTPException(status_code=409, detail="Отчёт уже обработан")
