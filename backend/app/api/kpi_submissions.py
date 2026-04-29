@@ -148,15 +148,24 @@ async def load_summary_from_redmine(
 
     # ── Классификация записей ────────────────────────────────────────────────
     _ABSENCE_KEYWORDS = ('отпуск', 'больничный', 'отгул', 'командировка', 'нетрудоспособ')
+    _ABSENCE_PROJECTS = ('график отпусков',)
+    _ABSENCE_ACTIVITIES = ('отпуск',)
     work_entries: list[dict] = []
     absence_entries: list[dict] = []
 
     for entry in time_entries:
         issue_subject = (entry.get("issue") or {}).get("subject", "")
+        project_name  = (entry.get("project") or {}).get("name", "").lower()
+        activity_name = (entry.get("activity") or {}).get("name", "").lower()
+
         if not issue_subject:
             # Запись без задачи в Redmine = отпуск/больничный/командировка
             absence_entries.append(entry)
         elif any(kw in issue_subject.lower() for kw in _ABSENCE_KEYWORDS):
+            absence_entries.append(entry)
+        elif any(proj in project_name for proj in _ABSENCE_PROJECTS):
+            absence_entries.append(entry)
+        elif any(act == activity_name for act in _ABSENCE_ACTIVITIES):
             absence_entries.append(entry)
         else:
             work_entries.append(entry)

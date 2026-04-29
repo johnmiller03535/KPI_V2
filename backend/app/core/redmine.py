@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import warnings
 import httpx
@@ -133,6 +134,19 @@ class RedmineClient:
             except httpx.RequestError:
                 return None
 
+    async def _fetch_issue_subject(self, client: httpx.AsyncClient, issue_id: int) -> tuple[int, str]:
+        """Запрашивает subject одной задачи. Возвращает (issue_id, subject)."""
+        try:
+            resp = await client.get(
+                f"{self.base_url}/issues/{issue_id}.json",
+                headers=self._headers(),
+            )
+            if resp.status_code == 200:
+                return issue_id, resp.json().get("issue", {}).get("subject", "")
+        except Exception:
+            pass
+        return issue_id, ""
+
     async def get_time_entries(self, user_id: int,
                                date_from: str, date_to: str,
                                limit: int = 200) -> list[dict]:
@@ -140,6 +154,7 @@ class RedmineClient:
         Получает трудозатраты пользователя за период.
         date_from, date_to — формат 'YYYY-MM-DD'
         Возвращает список записей с полями: hours, comments, spent_on, activity, issue
+        issue.subject обогащается отдельными запросами (Redmine не отдаёт subject в time_entries).
         """
         async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
             try:
@@ -155,12 +170,33 @@ class RedmineClient:
                     headers=self._headers(),
                     params=params,
                 )
-                if response.status_code == 200:
-                    entries = response.json().get("time_entries", [])
-                    logger.info(f"get_time_entries: получено {len(entries)} записей")
-                    return entries
-                logger.error(f"get_time_entries HTTP {response.status_code}: {response.text[:200]}")
-                return []
+                if response.status_code != 200:
+                    logger.error(f"get_time_entries HTTP {response.status_code}: {response.text[:200]}")
+                    return []
+
+                entries = response.json().get("time_entries", [])
+                logger.info(f"get_time_entries: получено {len(entries)} записей")
+
+                # ── Обогащение: подгружаем subject для каждой уникальной задачи ──
+                issue_ids = list({
+                    e["issue"]["id"]
+                    for e in entries
+                    if e.get("issue") and e["issue"].get("id")
+                })
+                if issue_ids:
+                    results = await asyncio.gather(
+                        *[self._fetch_issue_subject(client, iid) for iid in issue_ids]
+                    )
+                    subjects: dict[int, str] = dict(results)
+                    logger.info(f"get_time_entries: обогащено {len(subjects)} задач subject-ами")
+
+                    for entry in entries:
+                        issue = entry.get("issue")
+                        if issue and issue.get("id"):
+                            issue["subject"] = subjects.get(issue["id"], "")
+
+                return entries
+
             except httpx.RequestError as e:
                 logger.error(f"get_time_entries request error: {e}")
                 return []
