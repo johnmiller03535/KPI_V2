@@ -172,13 +172,6 @@ async def load_summary_from_redmine(
 
     absence_hours: float = sum(float(e.get("hours", 0)) for e in absence_entries)
 
-    # Все названия рабочих задач (с повторами — для подсчёта количества в промпте)
-    all_task_subjects: list[str] = [
-        (e.get("issue") or {}).get("subject", "")
-        for e in work_entries
-        if (e.get("issue") or {}).get("subject", "")
-    ]
-
     # ── Получаем role_name для промпта ───────────────────────────────────────
     role_name = ""
     if sub.position_id:
@@ -187,12 +180,10 @@ async def load_summary_from_redmine(
             _info = kpi_mapping_service.get_role_info(_role_id)
             role_name = (_info or {}).get("role", "")
 
-    period_start = str(period.date_start) if period else ""
-    period_end   = str(period.date_end)   if period else ""
-
     # ── AI генерирует связный текст саммари ─────────────────────────────────
+    # Передаём work_entries целиком — AI использует comments как основной источник
     summary_text = await ai_service.generate_summary_from_tasks(
-        task_subjects=all_task_subjects,
+        work_entries=work_entries,
         role_name=role_name,
         absence_hours=absence_hours,
     )

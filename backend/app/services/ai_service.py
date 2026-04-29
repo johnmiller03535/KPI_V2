@@ -248,74 +248,50 @@ class AIService:
                 "ai_low_confidence": True,
             }
 
-    # ── Классификатор задач (Python группирует, AI только пишет текст) ──────
-
-    _TASK_GROUPS: dict[str, list[str]] = {
-        "разработка": [
-            "разработка", "доработка", "автоматизация", "настройка",
-            "загрузка", "обновление данных", "добавление", "интеграция",
-        ],
-        "аналитика": [
-            "аналитика", "аналитических", "подготовка данных",
-            "обобщение данных", "подготовка отчёт", "подготовка презентац",
-            "подготовка материал", "подготовка дорожной", "подготовка повестки",
-            "квартального отчет", "обновление данных на дашборд",
-        ],
-        "совещания": [
-            "совещание", "встреча", "вкс", "зпмо", "час цифры",
-            "мероприятия по координации",
-        ],
-        "защиты": ["защита", "содоклад"],
-    }
-
-    _GROUP_LABELS: dict[str, str] = {
-        "разработка": "Разработка и автоматизация",
-        "аналитика":  "Аналитика и отчётность",
-        "совещания":  "Совещания и координация",
-        "защиты":     "Защиты и презентации",
-        "прочее":     "Прочее",
-    }
-
-    def _classify_task(self, subject: str) -> str:
-        s = subject.lower()
-        for group, keywords in self._TASK_GROUPS.items():
-            if any(kw in s for kw in keywords):
-                return group
-        return "прочее"
-
-    def _build_structured_text(self, task_subjects: list[str]) -> str:
-        """Python группирует и считает — AI получает готовую структуру."""
-        task_counts = Counter(task_subjects)
-        groups: dict[str, list[tuple[str, int]]] = {k: [] for k in self._GROUP_LABELS}
-
-        for task, count in task_counts.items():
-            groups[self._classify_task(task)].append((task, count))
-
-        lines: list[str] = []
-        for key, label in self._GROUP_LABELS.items():
-            tasks = sorted(groups[key], key=lambda x: -x[1])
-            if not tasks:
-                continue
-            lines.append(f"{label}:")
-            for task, count in tasks:
-                suffix = f" ({count} раз)" if count > 1 else ""
-                lines.append(f"  - {task}{suffix}")
-        return "\n".join(lines)
-
     async def generate_summary_from_tasks(
         self,
-        task_subjects: list[str],
+        work_entries: list[dict],
         role_name: str = "",
         absence_hours: float = 0.0,
     ) -> str:
         """
-        Генерирует деловое саммари из списка названий задач через AI.
-        Python группирует и считает задачи; AI только преобразует в связный текст.
+        Генерирует деловое саммари из рабочих трудозатрат Redmine через AI.
+        Основной источник: поле comments (детальное описание работы).
+        issue.subject используется как контекст если комментарий пустой.
+        Если >80% записей без информативных комментариев — возвращает подсказку без AI.
         """
-        if not task_subjects:
+        if not work_entries:
             return "Рабочие задачи за период не зафиксированы."
 
-        structured_text = self._build_structured_text(task_subjects)
+        # ── Строим entries_text из subject + comments ─────────────────────────
+        raw_lines: list[str] = []
+        empty_comment_count = 0
+
+        for entry in work_entries:
+            subject = (entry.get("issue") or {}).get("subject", "Без задачи")
+            comment = (entry.get("comments") or "").strip()
+
+            if comment and comment.lower() != subject.lower():
+                raw_lines.append(f"[{subject}] {comment}")
+            else:
+                raw_lines.append(f"[{subject}]")
+                empty_comment_count += 1
+
+        # Дедупликация (сохраняем порядок)
+        entries_text = "\n".join(dict.fromkeys(raw_lines))
+
+        # ── Fallback: если >80% записей без комментариев ─────────────────────
+        if empty_comment_count > len(work_entries) * 0.8:
+            logger.info(
+                f"generate_summary: {empty_comment_count}/{len(work_entries)} "
+                f"записей без комментариев → возвращаем подсказку"
+            )
+            return (
+                f"Детальные комментарии к трудозатратам не заполнены. "
+                f"Для корректной AI-оценки рекомендуется указывать в Redmine "
+                f"описание выполненных работ при списании трудозатрат. "
+                f"За период зафиксировано {len(work_entries)} записей трудозатрат."
+            )
 
         absence_note = (
             f"Примечание: {int(absence_hours)} ч — отпуск/больничный/командировка "
@@ -327,19 +303,19 @@ class AIService:
 
 Должность: {role_name}
 
-Выполненные задачи, уже сгруппированные и подсчитанные:
-{structured_text}
+Записи о выполненной работе (формат: [Задача] Описание):
+{entries_text}
 
 {absence_note}
 
-Напиши связное деловое саммари. Правила:
-1. Используй ТОЛЬКО данные из списка выше — никаких добавлений.
-2. Сохраняй точные числа из списка — не пересчитывай.
-3. Сохраняй точные названия задач — не переименовывай.
-4. Деловой стиль: "Выполнена...", "Проведено...", "Подготовлены...", "Обеспечено участие..."
-5. Период НЕ упоминать.
-6. Каждую группу — отдельное предложение или два.
-7. Если группа пустая — пропусти её.
+Напиши связное деловое саммари выполненных работ. Правила:
+1. Используй ТОЛЬКО информацию из записей выше.
+2. Объединяй похожие работы в одно предложение.
+3. Деловой стиль: "Проведено...", "Подготовлены...", "Выполнена..."
+4. Период НЕ упоминать.
+5. Если в записи есть конкретные детали (названия, результаты) — включай их.
+6. Если комментарии неинформативны — опирайся на названия задач в скобках.
+7. Не придумывай детали которых нет в записях.
 """
 
         try:
@@ -347,7 +323,7 @@ class AIService:
             return result.strip()
         except Exception as e:
             logger.error(f"generate_summary_from_tasks error: {e}")
-            return structured_text
+            return entries_text
 
     async def summarize_time_entries(self, time_entries: list[dict]) -> str:
         """Общее саммари по трудозатратам."""
