@@ -27,6 +27,8 @@ type KpiItem = {
   reviewed_at?: string
   plan_value?: string | number
   manager_override?: boolean | null
+  common_text_positive?: string
+  common_text_negative?: string
 }
 
 type Submission = {
@@ -431,6 +433,24 @@ function BinaryManualCard({
               ❌ НЕ ВЫПОЛНЕНО
             </button>
           </div>
+          {/* Стандартная формулировка для общих показателей */}
+          {item.is_common && localScore !== null && (
+            <div style={{
+              marginBottom: 12,
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: localScore === 100 ? 'rgba(0,255,157,0.06)' : 'rgba(255,59,92,0.06)',
+              border: `1px solid ${localScore === 100 ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
+              fontSize: 12,
+              color: localScore === 100 ? 'var(--accent3)' : 'var(--danger)',
+              fontStyle: 'italic',
+              lineHeight: 1.6,
+            }}>
+              {localScore === 100
+                ? (item.common_text_positive || 'Показатель выполнен в полном объёме.')
+                : (item.common_text_negative || 'Показатель не выполнен.')}
+            </div>
+          )}
           <div>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>Комментарий (необязательно)</div>
             <textarea
@@ -458,12 +478,31 @@ function BinaryManualCard({
 
       {/* Статус (только просмотр) */}
       {!canEdit && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {localScore === 100 && <span style={{ color: 'var(--accent3)', fontWeight: 700, fontSize: 14 }}>✅ ВЫПОЛНЕНО</span>}
-          {localScore === 0 && <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 14 }}>❌ НЕ ВЫПОЛНЕНО</span>}
-          {localScore === null && <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>— Не оценено</span>}
-          {item.reviewer_comment && (
-            <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>· {item.reviewer_comment}</span>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {localScore === 100 && <span style={{ color: 'var(--accent3)', fontWeight: 700, fontSize: 14 }}>✅ ВЫПОЛНЕНО</span>}
+            {localScore === 0 && <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: 14 }}>❌ НЕ ВЫПОЛНЕНО</span>}
+            {localScore === null && <span style={{ color: 'var(--text-dim)', fontSize: 14 }}>— Не оценено</span>}
+            {item.reviewer_comment && (
+              <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>· {item.reviewer_comment}</span>
+            )}
+          </div>
+          {item.is_common && localScore !== null && (
+            <div style={{
+              marginTop: 10,
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: localScore === 100 ? 'rgba(0,255,157,0.06)' : 'rgba(255,59,92,0.06)',
+              border: `1px solid ${localScore === 100 ? 'rgba(0,255,157,0.2)' : 'rgba(255,59,92,0.2)'}`,
+              fontSize: 12,
+              color: localScore === 100 ? 'var(--accent3)' : 'var(--danger)',
+              fontStyle: 'italic',
+              lineHeight: 1.6,
+            }}>
+              {localScore === 100
+                ? (item.common_text_positive || 'Показатель выполнен в полном объёме.')
+                : (item.common_text_negative || 'Показатель не выполнен.')}
+            </div>
           )}
         </div>
       )}

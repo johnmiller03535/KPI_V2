@@ -207,7 +207,9 @@ async def load_summary_from_redmine(
                 "parsed_thresholds": None, "requires_review": False,
                 "ai_low_confidence": False,
             })
+        from app.services.report_service import get_common_kpi_texts
         for kpi in structure.binary_manual:
+            pos_text, neg_text = get_common_kpi_texts(kpi.criterion) if kpi.is_common else ("", "")
             kpi_values.append({
                 "indicator": kpi.indicator, "criterion": kpi.criterion,
                 "formula_type": kpi.formula_type, "weight": kpi.weight,
@@ -217,6 +219,8 @@ async def load_summary_from_redmine(
                 "requires_fact_input": False, "fact_value": None,
                 "parsed_thresholds": None, "requires_review": False,
                 "ai_low_confidence": False,
+                "common_text_positive": pos_text,
+                "common_text_negative": neg_text,
             })
         for kpi in structure.numeric:
             kpi_values.append({

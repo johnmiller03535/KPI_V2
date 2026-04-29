@@ -22,6 +22,47 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "../templates")
 # Redmine status_id для «Оценено» (задача оценена, PDF прикреплён)
 REDMINE_STATUS_EVALUATED = 27
 
+# ---------------------------------------------------------------------------
+# Стандартные формулировки для общих показателей (is_common=True, binary_manual)
+# ---------------------------------------------------------------------------
+
+COMMON_KPI_TEXTS: dict[str, dict[bool, str]] = {
+    "исполнительской дисциплин": {
+        True:  "Исполнительская дисциплина соблюдается в полном объёме. Сроки исполнения протокольных поручений, образующихся в ходе деятельности Учреждения, а также сроки исполнения приказов и распоряжений Учреждения, письменных и устных поручений руководства не нарушаются.",
+        False: "Исполнительская дисциплина не соблюдается в полном объёме. Допущены нарушения сроков исполнения протокольных поручений, приказов и распоряжений Учреждения.",
+    },
+    "трудового распорядка": {
+        True:  "Правила внутреннего трудового распорядка и Кодекса этики соблюдаются в полном объёме.",
+        False: "Правила внутреннего трудового распорядка и Кодекса этики не соблюдаются в полном объёме.",
+    },
+    "техники безопасности": {
+        True:  "Правила и нормы техники безопасности, охраны труда и противопожарного режима соблюдаются в полном объёме.",
+        False: "Правила и нормы техники безопасности, охраны труда и противопожарного режима не соблюдаются в полном объёме.",
+    },
+    "охран": {
+        True:  "Правила и нормы техники безопасности, охраны труда и противопожарного режима соблюдаются в полном объёме.",
+        False: "Правила и нормы техники безопасности, охраны труда и противопожарного режима не соблюдаются в полном объёме.",
+    },
+    "МСЭД": {
+        True:  "Система электронного документооборота используется в полном объёме. Поручения в МСЭД исполняются в установленные сроки.",
+        False: "Допущены нарушения при работе в системе электронного документооборота МСЭД.",
+    },
+}
+
+
+def get_common_kpi_text(criterion: str, is_fulfilled: bool) -> str:
+    """Возвращает стандартную формулировку для общего KPI-показателя."""
+    cl = criterion.lower()
+    for key, texts in COMMON_KPI_TEXTS.items():
+        if key.lower() in cl:
+            return texts[is_fulfilled]
+    return "Показатель выполнен в полном объёме." if is_fulfilled else "Показатель не выполнен."
+
+
+def get_common_kpi_texts(criterion: str) -> tuple[str, str]:
+    """Возвращает (positive_text, negative_text) для общего KPI-показателя."""
+    return get_common_kpi_text(criterion, True), get_common_kpi_text(criterion, False)
+
 
 class ReportService:
 
@@ -104,13 +145,12 @@ class ReportService:
                 fact_display = "1" if effective_score == 100 else ("0" if effective_score == 0 else "—")
                 pct_display  = f"{effective_score:.0f}%" if effective_score is not None else "—"
                 result_val   = f"{weight_frac * (effective_score / 100):.2f}" if effective_score is not None else "—"
-                # Пометка если руководитель переопределил AI
-                base_summary = kv.get("summary", "")
+                # Мероприятия = summary_text сотрудника (основной текст отчёта)
+                # AI reasoning убран — он идёт в отдельную колонку через kpi_results
+                measures = submission.summary_text or kv.get("summary") or "—"
                 if manager_override is not None:
-                    override_label = "✅ Выполнено" if manager_override else "❌ Не выполнено"
-                    measures = f"{base_summary}\n[Решение руководителя: {override_label}]".strip()
-                else:
-                    measures = base_summary
+                    override_label = "Выполнено" if manager_override else "Не выполнено"
+                    measures = f"{measures}\n(Решение руководителя: {override_label})".strip()
                 plan_display = "1"
                 if effective_score is not None:
                     total_result += weight_frac * (effective_score / 100)
@@ -147,53 +187,43 @@ class ReportService:
 
         # Дисциплина (30%) — discipline / binary_auto is_common или старый текст
         discipline_kv = _kv_by_criterion_fragment(kpi_values, "исполнительской дисциплин")
-        if discipline_kv:
-            d_score   = discipline_kv.get("score")
-            d_fact    = "1" if d_score == 100 else ("0" if d_score == 0 else "1")
-            d_pct     = self._pct(1 if d_score == 100 else 0 if d_score == 0 else 1)
-            d_result  = self._result(1 if d_score == 100 else 0 if d_score == 0 else 1, 0.30)
-            d_summary = discipline_kv.get("summary") or submission.bin_discipline_summary or ""
-            d_num     = 1 if d_score == 100 else 0 if d_score == 0 else 1
-        else:
-            d_num     = 1
-            d_fact    = "1"
-            d_pct     = self._pct(1)
-            d_result  = self._result(1, 0.30)
-            d_summary = submission.bin_discipline_summary or ""
+        def _common_summary(kv: Optional[dict], criterion_fragment: str, fallback: str, weight: float) -> tuple[str, str, str, str, float]:
+            """Возвращает (summary, fact, pct, result, num) для общего binary_manual KPI."""
+            if kv:
+                score = kv.get("score")
+                is_done = score == 100
+                num = 1.0 if is_done else 0.0
+                # Стандартная формулировка по словарю
+                text = get_common_kpi_text(kv.get("criterion", criterion_fragment), is_done)
+                return (
+                    text,
+                    "1" if is_done else "0",
+                    self._pct(1 if is_done else 0),
+                    self._result(1 if is_done else 0, weight),
+                    num,
+                )
+            else:
+                return fallback, "1", self._pct(1), self._result(1, weight), 1.0
+
+        discipline_kv = _kv_by_criterion_fragment(kpi_values, "исполнительской дисциплин")
+        d_summary, d_fact, d_pct, d_result, d_num = _common_summary(
+            discipline_kv, "исполнительской дисциплины",
+            submission.bin_discipline_summary or "", 0.30,
+        )
         total_result += 0.30 * d_num
 
-        # Распорядок (10%)
         schedule_kv = _kv_by_criterion_fragment(binary_manual, "трудового распорядка")
-        if schedule_kv:
-            s_score   = schedule_kv.get("score")
-            s_fact    = "1" if s_score == 100 else ("0" if s_score == 0 else "—")
-            s_pct     = self._pct(1 if s_score == 100 else 0 if s_score == 0 else None)
-            s_result  = self._result(1 if s_score == 100 else 0 if s_score == 0 else None, 0.10)
-            s_summary = schedule_kv.get("reviewer_comment") or schedule_kv.get("summary") or submission.bin_schedule_summary or ""
-            s_num     = (s_score or 0) / 100
-        else:
-            s_num     = 1
-            s_fact    = "1"
-            s_pct     = self._pct(1)
-            s_result  = self._result(1, 0.10)
-            s_summary = submission.bin_schedule_summary or ""
+        s_summary, s_fact, s_pct, s_result, s_num = _common_summary(
+            schedule_kv, "трудового распорядка",
+            submission.bin_schedule_summary or "", 0.10,
+        )
         total_result += 0.10 * s_num
 
-        # Охрана труда (10%)
         safety_kv = _kv_by_criterion_fragment(binary_manual, "охран")
-        if safety_kv:
-            sf_score   = safety_kv.get("score")
-            sf_fact    = "1" if sf_score == 100 else ("0" if sf_score == 0 else "—")
-            sf_pct     = self._pct(1 if sf_score == 100 else 0 if sf_score == 0 else None)
-            sf_result  = self._result(1 if sf_score == 100 else 0 if sf_score == 0 else None, 0.10)
-            sf_summary = safety_kv.get("reviewer_comment") or safety_kv.get("summary") or submission.bin_safety_summary or ""
-            sf_num     = (sf_score or 0) / 100
-        else:
-            sf_num     = 1
-            sf_fact    = "1"
-            sf_pct     = self._pct(1)
-            sf_result  = self._result(1, 0.10)
-            sf_summary = submission.bin_safety_summary or ""
+        sf_summary, sf_fact, sf_pct, sf_result, sf_num = _common_summary(
+            safety_kv, "охрана труда",
+            submission.bin_safety_summary or "", 0.10,
+        )
         total_result += 0.10 * sf_num
 
         return {
