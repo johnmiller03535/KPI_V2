@@ -317,23 +317,35 @@ class ReportService:
             select(Period).where(Period.id == sub.period_id)
         )
         period = period_res.scalar_one_or_none()
-        period_dates = (period.date_start, period.date_end) if period else None
+        period_dates = (period.date_start, period.date_end) if (period and period.date_start and period.date_end) else None
+        logger.info(
+            f"PDF period lookup: period_id={sub.period_id} found={period is not None} "
+            f"date_start={getattr(period, 'date_start', None)} date_end={getattr(period, 'date_end', None)}"
+        )
 
         reviewer_emp = None
         if sub.reviewer_redmine_id:
             rev_res = await db.execute(
-                select(Employee).where(Employee.redmine_id == sub.reviewer_redmine_id)
+                select(Employee).where(Employee.redmine_id == str(sub.reviewer_redmine_id))
             )
             reviewer_emp = rev_res.scalar_one_or_none()
+        logger.info(
+            f"PDF reviewer lookup: reviewer_redmine_id={sub.reviewer_redmine_id!r} "
+            f"found={reviewer_emp is not None} "
+            f"position_id={getattr(reviewer_emp, 'position_id', None)}"
+        )
 
         context = self._build_context(sub, emp, reviewer_emp=reviewer_emp, period_dates=period_dates)
         html = self.render_html(context)
         pdf_bytes = self.generate_pdf_bytes(html)
 
         logger.info(
-            f"PDF сгенерирован: submission={submission_id}, "
-            f"сотрудник={emp.full_name if emp else '?'}, "
-            f"период={sub.period_name}, размер={len(pdf_bytes)} байт"
+            f"PDF сгенерирован: submission={submission_id} "
+            f"сотрудник={emp.full_name if emp else '?'} "
+            f"period_display={context.get('period_name')} "
+            f"reviewer_title={context.get('reviewer_title')} "
+            f"reviewer_name={context.get('reviewer_name')} "
+            f"размер={len(pdf_bytes)} байт"
         )
         return pdf_bytes
 
