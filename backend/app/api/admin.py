@@ -582,6 +582,9 @@ async def create_test_submissions(
             position_id=str(pos_id),
             redmine_issue_id=issue["id"] if issue else None,
             status=SubmissionStatus.draft,
+            # Для тестовых отчётов reviewer = сам сотрудник (self-review)
+            reviewer_redmine_id=employee.redmine_id,
+            reviewer_login=employee.login,
         )
         db.add(submission)
         await db.flush()

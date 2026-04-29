@@ -530,6 +530,10 @@ async def _notify_manager_about_submission(
     # Найти руководителя через subordination
     evaluator_pos = subordination_service.get_evaluator_position(emp.position_id)
     if not evaluator_pos:
+        logger.warning(
+            f"_notify_manager: evaluator_position не найден для pos_id={emp.position_id} "
+            f"(employee={emp.login})"
+        )
         return
 
     mgr_result = await db.execute(
@@ -539,9 +543,15 @@ async def _notify_manager_about_submission(
         )
     )
     manager = mgr_result.scalar_one_or_none()
-    if not manager or not manager.telegram_id:
+    if not manager:
         logger.warning(
-            f"Руководитель {evaluator_pos} не найден или нет telegram_id"
+            f"_notify_manager: сотрудник с position_id={evaluator_pos} не найден в employees"
+        )
+        return
+    if not manager.telegram_id:
+        logger.warning(
+            f"_notify_manager: reviewer {manager.login} (redmine_id={manager.redmine_id}) "
+            f"has no telegram_id, skipping"
         )
         return
 
@@ -570,6 +580,10 @@ async def _notify_manager_about_submission(
         f"Выберите действие или откройте портал для детального просмотра."
     )
 
+    logger.info(
+        f"Sending Telegram to reviewer {manager.telegram_id} "
+        f"({manager.login}, redmine_id={manager.redmine_id})"
+    )
     await bot.send_message(
         chat_id=manager.telegram_id,
         text=text,

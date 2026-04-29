@@ -121,13 +121,17 @@ async def get_submissions_for_review(
     period_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
 ):
-    """Список отчётов подчинённых. По умолчанию — все кроме draft."""
+    """Список отчётов подчинённых. По умолчанию — все кроме draft.
+    Также возвращает отчёты где reviewer_redmine_id явно назначен на текущего пользователя
+    (используется для тестовых submissions с self-review).
+    """
     subordinate_ids = await _get_effective_subordinate_ids(current_user, db)
-    if not subordinate_ids:
-        return []
 
     query = select(KpiSubmission).where(
-        KpiSubmission.employee_redmine_id.in_(subordinate_ids)
+        or_(
+            KpiSubmission.employee_redmine_id.in_(subordinate_ids) if subordinate_ids else False,
+            KpiSubmission.reviewer_redmine_id == current_user.redmine_id,
+        )
     )
     if period_id:
         query = query.where(KpiSubmission.period_id == period_id)
