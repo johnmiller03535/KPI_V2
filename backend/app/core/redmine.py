@@ -143,19 +143,23 @@ class RedmineClient:
         """
         async with httpx.AsyncClient(timeout=20.0, verify=False) as client:
             try:
+                params = {
+                    "user_id": user_id,
+                    "from": date_from,
+                    "to": date_to,
+                    "limit": limit,
+                }
+                logger.info(f"get_time_entries: user_id={user_id} from={date_from} to={date_to}")
                 response = await client.get(
                     f"{self.base_url}/time_entries.json",
                     headers=self._headers(),
-                    params={
-                        "user_id": user_id,
-                        "from": date_from,
-                        "to": date_to,
-                        "limit": limit,
-                    },
+                    params=params,
                 )
                 if response.status_code == 200:
-                    return response.json().get("time_entries", [])
-                logger.error(f"get_time_entries error {response.status_code}")
+                    entries = response.json().get("time_entries", [])
+                    logger.info(f"get_time_entries: получено {len(entries)} записей")
+                    return entries
+                logger.error(f"get_time_entries HTTP {response.status_code}: {response.text[:200]}")
                 return []
             except httpx.RequestError as e:
                 logger.error(f"get_time_entries request error: {e}")

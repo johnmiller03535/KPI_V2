@@ -133,11 +133,16 @@ async def load_summary_from_redmine(
     time_entries: list[dict] = []
     if period:
         try:
+            logger.info(
+                f"load-summary: user={current_user.redmine_id} "
+                f"period={period.date_start}..{period.date_end}"
+            )
             time_entries = await redmine_client.get_time_entries(
                 user_id=int(current_user.redmine_id),
                 date_from=str(period.date_start),
                 date_to=str(period.date_end),
             )
+            logger.info(f"load-summary: time_entries count={len(time_entries)}")
         except Exception as e:
             logger.warning(f"Не удалось получить трудозатраты: {e}")
 
@@ -446,7 +451,7 @@ async def submit_for_review(
     # AI-оценка всех binary_auto KPI по summary_text
     kpi_values: list[dict] = list(sub.kpi_values) if sub.kpi_values else []
     for item in kpi_values:
-        if item.get("kpi_type") != "binary_auto":
+        if item.get("formula_type") != "binary_auto":
             continue
         try:
             ai_result = await ai_service.evaluate_binary_kpi_from_summary(
@@ -552,7 +557,7 @@ async def _notify_manager_about_submission(
     ai_score_line = ""
     low_conf_line = ""
     if sub.kpi_values:
-        auto_items = [k for k in sub.kpi_values if k.get("kpi_type") == "binary_auto" and k.get("score") is not None]
+        auto_items = [k for k in sub.kpi_values if k.get("formula_type") == "binary_auto" and k.get("score") is not None]
         if auto_items:
             avg_score = round(sum(k["score"] for k in auto_items) / len(auto_items))
             ai_score_line = f"\n⚡ AI-оценка binary KPI: <b>{avg_score}/100</b>"

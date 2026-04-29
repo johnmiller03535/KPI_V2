@@ -40,9 +40,10 @@ function computeScore(kpiValues: any[] | null): number | null {
 
 function computeKpiStats(kpiValues: any[] | null) {
   if (!kpiValues || kpiValues.length === 0) return null
-  const ai      = kpiValues.filter((k: any) => k.kpi_type === 'binary_auto')
-  const manual  = kpiValues.filter((k: any) => k.kpi_type === 'binary_manual')
-  const numeric = kpiValues.filter((k: any) => k.kpi_type === 'numeric')
+  const _NUMERIC_FT = ['threshold', 'multi_threshold', 'quarterly_threshold']
+  const ai      = kpiValues.filter((k: any) => k.formula_type === 'binary_auto')
+  const manual  = kpiValues.filter((k: any) => k.formula_type === 'binary_manual')
+  const numeric = kpiValues.filter((k: any) => _NUMERIC_FT.includes(k.formula_type))
   return {
     aiTotal:   ai.length,
     aiScored:  ai.filter((k: any) => k.score !== null).length,
@@ -55,7 +56,7 @@ function computeKpiStats(kpiValues: any[] | null) {
 
 function pendingManualCount(kpiValues: any[] | null): number {
   if (!kpiValues) return 0
-  return kpiValues.filter((k: any) => k.kpi_type === 'binary_manual' && k.awaiting_manual_input).length
+  return kpiValues.filter((k: any) => k.formula_type === 'binary_manual' && k.awaiting_manual_input).length
 }
 
 function scoreColor(score: number | null) {

@@ -297,7 +297,7 @@ async def get_pending_manual(
     kpi_values: list[dict] = sub.kpi_values or []
     pending_items = []
     for idx, item in enumerate(kpi_values):
-        if item.get("kpi_type") == "binary_manual" and item.get("awaiting_manual_input", False):
+        if item.get("formula_type") == "binary_manual" and item.get("awaiting_manual_input", False):
             pending_items.append({
                 "index": idx,
                 "indicator": item.get("indicator", ""),
@@ -347,7 +347,7 @@ async def score_binary_manual(
         raise HTTPException(status_code=400, detail="Неверный kpi_index")
 
     item = kpi_values[body.kpi_index]
-    if item.get("kpi_type") != "binary_manual":
+    if item.get("formula_type") != "binary_manual":
         raise HTTPException(status_code=400, detail="Этот KPI не является binary_manual")
 
     item["score"] = float(body.score)

@@ -72,9 +72,10 @@ class ReportService:
         kpi_values: list[dict] = submission.kpi_values or []
 
         # Разбиваем kpi_values на группы
-        binary_auto   = [k for k in kpi_values if k.get("kpi_type") == "binary_auto"]
-        binary_manual = [k for k in kpi_values if k.get("kpi_type") == "binary_manual"]
-        numeric       = [k for k in kpi_values if k.get("kpi_type") == "numeric"]
+        binary_auto   = [k for k in kpi_values if k.get("formula_type") == "binary_auto"]
+        binary_manual = [k for k in kpi_values if k.get("formula_type") == "binary_manual"]
+        _NUMERIC_TYPES = {"threshold", "multi_threshold", "quarterly_threshold"}
+        numeric       = [k for k in kpi_values if k.get("formula_type") in _NUMERIC_TYPES]
 
         # --- Специфические (не общие) KPI = binary_auto + numeric ---
         specific_kpis = []
@@ -88,10 +89,10 @@ class ReportService:
         for kv in non_common:
             weight_pct  = float(kv.get("weight", 0))
             weight_frac = weight_pct / 100
-            kpi_type    = kv.get("kpi_type", "")
-            score       = kv.get("score")          # 0–100 для binary_auto; None если не оценено
+            formula_type = kv.get("formula_type", "")
+            score        = kv.get("score")          # 0–100 для binary_auto; None если не оценено
 
-            if kpi_type == "binary_auto":
+            if formula_type == "binary_auto":
                 # fact = 1 (выполнено) или 0 (не выполнено), план = 1
                 fact_display = "1" if score == 100 else ("0" if score == 0 else "—")
                 pct_display  = f"{score:.0f}%" if score is not None else "—"
