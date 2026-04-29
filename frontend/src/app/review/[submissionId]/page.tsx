@@ -43,6 +43,7 @@ type Submission = {
   bin_schedule_summary: string | null
   bin_safety_summary: string | null
   kpi_values: KpiItem[] | null
+  summary_text: string | null
   submitted_at: string | null
   ai_generated_at: string | null
 }
@@ -99,12 +100,14 @@ function BinaryAutoCard({
   globalIndex,
   submissionId,
   submissionStatus,
+  summaryText,
   onOverride,
 }: {
   item: KpiItem
   globalIndex: number
   submissionId: string
   submissionStatus: string
+  summaryText: string | null
   onOverride: (globalIndex: number, value: boolean | null) => void
 }) {
   const [saving, setSaving] = useState(false)
@@ -153,10 +156,10 @@ function BinaryAutoCard({
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: 'var(--text)' }}>
             {item.criterion}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: item.summary ? 10 : 0 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: summaryText ? 10 : 0 }}>
             {item.indicator}
           </div>
-          {item.summary && (
+          {summaryText && (
             <div style={{
               background: 'rgba(0,229,255,0.04)',
               border: '1px solid rgba(0,229,255,0.1)',
@@ -167,7 +170,7 @@ function BinaryAutoCard({
               lineHeight: 1.6,
               whiteSpace: 'pre-wrap',
             }}>
-              {item.summary}
+              {summaryText}
             </div>
           )}
           {item.confidence !== null && item.confidence !== undefined && (
@@ -806,6 +809,7 @@ export default function ReviewDetailPage({
                   globalIndex={globalIdx}
                   submissionId={submissionId}
                   submissionStatus={submission.status}
+                  summaryText={submission.summary_text}
                   onOverride={handleAutoOverride}
                 />
               ))}
