@@ -93,14 +93,27 @@ class ReportService:
             score        = kv.get("score")          # 0–100 для binary_auto; None если не оценено
 
             if formula_type == "binary_auto":
+                # Приоритет: manager_override > ai_score
+                manager_override = kv.get("manager_override")
+                effective_score = (
+                    (100.0 if manager_override else 0.0)
+                    if manager_override is not None
+                    else score
+                )
                 # fact = 1 (выполнено) или 0 (не выполнено), план = 1
-                fact_display = "1" if score == 100 else ("0" if score == 0 else "—")
-                pct_display  = f"{score:.0f}%" if score is not None else "—"
-                result_val   = f"{weight_frac * (score / 100):.2f}" if score is not None else "—"
-                measures     = kv.get("summary", "")
+                fact_display = "1" if effective_score == 100 else ("0" if effective_score == 0 else "—")
+                pct_display  = f"{effective_score:.0f}%" if effective_score is not None else "—"
+                result_val   = f"{weight_frac * (effective_score / 100):.2f}" if effective_score is not None else "—"
+                # Пометка если руководитель переопределил AI
+                base_summary = kv.get("summary", "")
+                if manager_override is not None:
+                    override_label = "✅ Выполнено" if manager_override else "❌ Не выполнено"
+                    measures = f"{base_summary}\n[Решение руководителя: {override_label}]".strip()
+                else:
+                    measures = base_summary
                 plan_display = "1"
-                if score is not None:
-                    total_result += weight_frac * (score / 100)
+                if effective_score is not None:
+                    total_result += weight_frac * (effective_score / 100)
             else:
                 # numeric
                 fact = kv.get("fact_value")

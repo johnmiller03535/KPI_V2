@@ -21,7 +21,7 @@ from app.schemas.review import (
     ReviewDecision, SubmissionForReview,
     DeputyAssignmentCreate, DeputyAssignmentResponse,
 )
-from app.schemas.kpi import BinaryManualUpdate, PendingManualResponse
+from app.schemas.kpi import BinaryManualUpdate, BinaryAutoOverride, PendingManualResponse
 from app.schemas.kpi_submission import ScoreResponse
 
 logger = logging.getLogger(__name__)
@@ -391,6 +391,78 @@ async def score_binary_manual(
     await db.commit()
 
     # Пересчёт partial_score
+    partial_score, total_weight, scored_weight = kpi_engine_service.compute_score_from_kpi_values(
+        sub.kpi_values
+    )
+    completion_pct = round(scored_weight / total_weight * 100, 1) if total_weight > 0 else 0.0
+
+    return ScoreResponse(
+        submission_id=submission_id,
+        partial_score=partial_score,
+        total_weight=total_weight,
+        scored_weight=scored_weight,
+        completion_pct=completion_pct,
+        status=sub.status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# binary_auto override (руководитель переопределяет AI)
+# ---------------------------------------------------------------------------
+
+@router.patch("/{submission_id}/binary-auto-override", response_model=ScoreResponse)
+async def override_binary_auto(
+    submission_id: str,
+    body: BinaryAutoOverride,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Руководитель переопределяет AI-оценку для binary_auto показателя.
+    manager_override=True/False — явное решение; None — сбросить переопределение.
+    """
+    subordinate_ids = await _get_effective_subordinate_ids(current_user, db)
+
+    result = await db.execute(
+        select(KpiSubmission).where(KpiSubmission.id == submission_id)
+    )
+    sub = result.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+    if (
+        sub.employee_redmine_id not in subordinate_ids
+        and sub.reviewer_redmine_id != current_user.redmine_id
+    ):
+        raise HTTPException(status_code=403, detail="Нет доступа к этому отчёту")
+    if sub.status != SubmissionStatus.submitted:
+        raise HTTPException(status_code=400, detail="Отчёт не находится на проверке")
+
+    kpi_values: list[dict] = list(sub.kpi_values) if sub.kpi_values else []
+    if body.kpi_index < 0 or body.kpi_index >= len(kpi_values):
+        raise HTTPException(status_code=400, detail="Неверный kpi_index")
+
+    item = kpi_values[body.kpi_index]
+    if item.get("formula_type") != "binary_auto":
+        raise HTTPException(status_code=400, detail="Этот KPI не является binary_auto")
+
+    item["manager_override"] = body.manager_override
+    sub.kpi_values = kpi_values
+    flag_modified(sub, "kpi_values")
+
+    db.add(AuditLog(
+        user_id=current_user.redmine_id,
+        user_login=current_user.login,
+        action="binary_auto_override",
+        details={
+            "submission_id": submission_id,
+            "kpi_index": body.kpi_index,
+            "manager_override": body.manager_override,
+            "ai_score": item.get("score"),
+            "criterion": item.get("criterion", "")[:80],
+        },
+    ))
+    await db.commit()
+
     partial_score, total_weight, scored_weight = kpi_engine_service.compute_score_from_kpi_values(
         sub.kpi_values
     )

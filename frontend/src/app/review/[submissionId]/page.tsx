@@ -26,6 +26,7 @@ type KpiItem = {
   reviewer_comment?: string
   reviewed_at?: string
   plan_value?: string | number
+  manager_override?: boolean | null
 }
 
 type Submission = {
@@ -61,13 +62,20 @@ const STATUS_CLASS: Record<string, string> = {
 
 // ─── Хелперы ─────────────────────────────────────────────────────────────────
 
+function effectiveScore(item: KpiItem): number | null {
+  if (item.formula_type === 'binary_auto' && item.manager_override !== undefined && item.manager_override !== null) {
+    return item.manager_override ? 100 : 0
+  }
+  return item.score
+}
+
 function computeScore(kpiValues: KpiItem[] | null): number | null {
   if (!kpiValues || kpiValues.length === 0) return null
-  const scored = kpiValues.filter(k => k.score !== null && k.score !== undefined)
+  const scored = kpiValues.filter(k => effectiveScore(k) !== null)
   if (scored.length === 0) return null
   const sw = scored.reduce((s, k) => s + k.weight, 0)
   if (sw === 0) return null
-  return Math.round(scored.reduce((s, k) => s + (k.score ?? 0) * k.weight, 0) / sw)
+  return Math.round(scored.reduce((s, k) => s + (effectiveScore(k) ?? 0) * k.weight, 0) / sw)
 }
 
 function scoreColor(score: number | null): string {
@@ -82,11 +90,50 @@ function pendingCount(kpiValues: KpiItem[] | null): number {
   return kpiValues.filter(k => k.formula_type === 'binary_manual' && k.awaiting_manual_input).length
 }
 
-// ─── Компонент: карточка binary_auto ─────────────────────────────────────────
+// ─── Компонент: карточка binary_auto (с кнопками override) ──────────────────
 
-function BinaryAutoCard({ item }: { item: KpiItem }) {
-  const sc = item.score
-  const accent = sc === null ? 'var(--text-dim)' : sc >= 90 ? 'var(--accent3)' : sc >= 70 ? 'var(--warn)' : 'var(--danger)'
+function BinaryAutoCard({
+  item,
+  globalIndex,
+  submissionId,
+  submissionStatus,
+  onOverride,
+}: {
+  item: KpiItem
+  globalIndex: number
+  submissionId: string
+  submissionStatus: string
+  onOverride: (globalIndex: number, value: boolean | null) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const canEdit = submissionStatus === 'submitted'
+
+  const aiScore = item.score
+  const override = item.manager_override ?? null
+  // Отображаемый score: override имеет приоритет
+  const displayScore = override !== null ? (override ? 100 : 0) : aiScore
+  const overridesDiffers = override !== null && aiScore !== null && ((override ? 100 : 0) !== aiScore)
+
+  const accent = displayScore === null ? 'var(--text-dim)'
+    : displayScore >= 90 ? 'var(--accent3)'
+    : displayScore >= 70 ? 'var(--warn)'
+    : 'var(--danger)'
+
+  async function handleOverride(value: boolean | null) {
+    if (!canEdit || saving) return
+    setSaving(true)
+    try {
+      await api.patch(`/review/${submissionId}/binary-auto-override`, {
+        kpi_index: globalIndex,
+        manager_override: value,
+      })
+      onOverride(globalIndex, value)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка при сохранении')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div
@@ -96,12 +143,9 @@ function BinaryAutoCard({ item }: { item: KpiItem }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            {item.is_common && (
-              <span className="badge badge-dim" style={{ fontSize: 10 }}>Общий</span>
-            )}
-            {item.requires_review && (
-              <span className="badge badge-warn" style={{ fontSize: 10 }}>Требует внимания</span>
-            )}
+            {item.is_common && <span className="badge badge-dim" style={{ fontSize: 10 }}>Общий</span>}
+            {item.requires_review && <span className="badge badge-warn" style={{ fontSize: 10 }}>Требует внимания</span>}
+            {override !== null && <span className="badge badge-warn" style={{ fontSize: 10 }}>Переопределено</span>}
             <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{item.weight}%</span>
           </div>
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: 'var(--text)' }}>
@@ -135,21 +179,88 @@ function BinaryAutoCard({ item }: { item: KpiItem }) {
             </div>
           )}
         </div>
-        {sc !== null && (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 26, fontWeight: 700, color: accent, lineHeight: 1 }}>
-              {Math.round(sc)}%
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>оценка AI</div>
-          </div>
-        )}
-        {sc === null && (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--text-dim)' }}>—</div>
-            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>нет оценки</div>
-          </div>
-        )}
+        <div style={{ textAlign: 'right' }}>
+          {displayScore !== null ? (
+            <>
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 26, fontWeight: 700, color: accent, lineHeight: 1 }}>
+                {Math.round(displayScore)}%
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>
+                {override !== null ? 'решение рук-ля' : 'оценка AI'}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: 'Orbitron, sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--text-dim)' }}>—</div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>нет оценки</div>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Блок override — только в статусе submitted */}
+      {canEdit && (
+        <div style={{ marginTop: 14, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: 1, marginBottom: 8 }}>
+            РЕШЕНИЕ РУКОВОДИТЕЛЯ (переопределяет AI)
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => handleOverride(override === true ? null : true)}
+              disabled={saving}
+              style={{
+                flex: 1, padding: '8px 6px', borderRadius: 8, cursor: saving ? 'wait' : 'pointer',
+                border: `1px solid ${override === true ? '#00ff9d' : 'rgba(0,255,157,0.25)'}`,
+                background: override === true ? 'rgba(0,255,157,0.15)' : 'transparent',
+                color: override === true ? '#00ff9d' : 'rgba(0,255,157,0.5)',
+                fontSize: 12, fontWeight: 700, fontFamily: 'Exo 2, sans-serif',
+                transition: 'all 0.2s', opacity: saving ? 0.6 : 1,
+              }}
+            >
+              ✅ Подтвердить выполнение
+            </button>
+            <button
+              onClick={() => handleOverride(override === false ? null : false)}
+              disabled={saving}
+              style={{
+                flex: 1, padding: '8px 6px', borderRadius: 8, cursor: saving ? 'wait' : 'pointer',
+                border: `1px solid ${override === false ? '#ff3b5c' : 'rgba(255,59,92,0.25)'}`,
+                background: override === false ? 'rgba(255,59,92,0.15)' : 'transparent',
+                color: override === false ? '#ff3b5c' : 'rgba(255,59,92,0.5)',
+                fontSize: 12, fontWeight: 700, fontFamily: 'Exo 2, sans-serif',
+                transition: 'all 0.2s', opacity: saving ? 0.6 : 1,
+              }}
+            >
+              ❌ Не выполнено
+            </button>
+          </div>
+          {overridesDiffers && (
+            <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 7 }}>
+              ⚠️ Решение руководителя отличается от оценки AI
+            </div>
+          )}
+          {override !== null && (
+            <button
+              onClick={() => handleOverride(null)}
+              disabled={saving}
+              style={{
+                marginTop: 6, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                border: '1px solid rgba(255,255,255,0.1)', background: 'transparent',
+                color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: 'Exo 2, sans-serif',
+              }}
+            >
+              × Сбросить (вернуть AI-оценку)
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Статус override — режим просмотра */}
+      {!canEdit && override !== null && (
+        <div style={{ marginTop: 10, fontSize: 11, color: 'var(--warn)' }}>
+          ⚠️ Руководитель переопределил AI: {override ? '✅ Выполнено' : '❌ Не выполнено'}
+        </div>
+      )}
     </div>
   )
 }
@@ -490,6 +601,18 @@ export default function ReviewDetailPage({
     })
   }, [])
 
+  // Обновить manager_override для binary_auto в локальном state
+  const handleAutoOverride = useCallback((globalIndex: number, value: boolean | null) => {
+    setSubmission(prev => {
+      if (!prev?.kpi_values) return prev
+      const updated = prev.kpi_values.map((item, i) => {
+        if (i !== globalIndex) return item
+        return { ...item, manager_override: value }
+      })
+      return { ...prev, kpi_values: updated }
+    })
+  }, [])
+
   async function handleDecide(approved: boolean, rejectReason?: string) {
     setDeciding(true)
     try {
@@ -528,15 +651,15 @@ export default function ReviewDetailPage({
   const kpiValues = submission.kpi_values || []
   // Фильтрация строго по formula_type — is_common не влияет на блок
   const _NUMERIC_TYPES = ['threshold', 'multi_threshold', 'quarterly_threshold']
-  const binaryAuto   = kpiValues.filter(k => k.formula_type === 'binary_auto')
-  const numericItems = kpiValues.filter(k => _NUMERIC_TYPES.includes(k.formula_type))
-  const binaryManual = kpiValues.filter(k => k.formula_type === 'binary_manual')
 
-  // Индексы binary_manual в исходном массиве kpi_values
-  const binaryManualIndexes = kpiValues.reduce<number[]>((acc, k, i) => {
-    if (k.formula_type === 'binary_manual') acc.push(i)
-    return acc
-  }, [])
+  // Пары [item, globalIndex] для каждой группы
+  const binaryAutoIndexed  = kpiValues.map((k, i) => [k, i] as [KpiItem, number]).filter(([k]) => k.formula_type === 'binary_auto')
+  const binaryManualIndexed = kpiValues.map((k, i) => [k, i] as [KpiItem, number]).filter(([k]) => k.formula_type === 'binary_manual')
+  const numericIndexed      = kpiValues.map((k, i) => [k, i] as [KpiItem, number]).filter(([k]) => _NUMERIC_TYPES.includes(k.formula_type))
+
+  const binaryAuto   = binaryAutoIndexed.map(([k]) => k)
+  const binaryManual = binaryManualIndexed.map(([k]) => k)
+  const numericItems = numericIndexed.map(([k]) => k)
 
   const score = computeScore(kpiValues)
   const pending = pendingCount(submission.kpi_values)
@@ -616,45 +739,52 @@ export default function ReviewDetailPage({
         )}
 
         {/* ─── Секция 1: AI-оценённые KPI ─────────────────────────────────────── */}
-        {binaryAuto.length > 0 && (
+        {binaryAutoIndexed.length > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div className="cyber-title" style={{ marginBottom: 14 }}>
-              🤖 AI-ОЦЕНКА · {binaryAuto.length} ПОКАЗАТЕЛЕЙ
+              🤖 AI-ОЦЕНКА · {binaryAutoIndexed.length} ПОКАЗАТЕЛЕЙ
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {binaryAuto.map((item, i) => (
-                <BinaryAutoCard key={i} item={item} />
+              {binaryAutoIndexed.map(([item, globalIdx]) => (
+                <BinaryAutoCard
+                  key={globalIdx}
+                  item={item}
+                  globalIndex={globalIdx}
+                  submissionId={submissionId}
+                  submissionStatus={submission.status}
+                  onOverride={handleAutoOverride}
+                />
               ))}
             </div>
           </div>
         )}
 
         {/* ─── Секция 2: Числовые KPI ──────────────────────────────────────────── */}
-        {numericItems.length > 0 && (
+        {numericIndexed.length > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div className="cyber-title" style={{ marginBottom: 14 }}>
-              📊 ЧИСЛОВЫЕ ПОКАЗАТЕЛИ · {numericItems.length} ПОКАЗАТЕЛЕЙ
+              📊 ЧИСЛОВЫЕ ПОКАЗАТЕЛИ · {numericIndexed.length} ПОКАЗАТЕЛЕЙ
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {numericItems.map((item, i) => (
-                <NumericCard key={i} item={item} />
+              {numericIndexed.map(([item, globalIdx]) => (
+                <NumericCard key={globalIdx} item={item} />
               ))}
             </div>
           </div>
         )}
 
         {/* ─── Секция 3: Ручная оценка ─────────────────────────────────────────── */}
-        {binaryManual.length > 0 && (
+        {binaryManualIndexed.length > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div className="cyber-title" style={{ marginBottom: 14 }}>
-              ✋ РУЧНАЯ ОЦЕНКА · {binaryManual.length} ПОКАЗАТЕЛЕЙ
+              ✋ РУЧНАЯ ОЦЕНКА · {binaryManualIndexed.length} ПОКАЗАТЕЛЕЙ
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {binaryManual.map((item, localIdx) => (
+              {binaryManualIndexed.map(([item, globalIdx]) => (
                 <BinaryManualCard
-                  key={localIdx}
+                  key={globalIdx}
                   item={item}
-                  index={binaryManualIndexes[localIdx]}
+                  index={globalIdx}
                   submissionId={submissionId}
                   submissionStatus={submission.status}
                   onScored={handleManualScored}

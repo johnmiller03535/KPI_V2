@@ -238,8 +238,19 @@ class KpiEngineService:
         self,
         kpi_values: list[dict],
     ) -> tuple[Optional[float], int, int]:
-        """Пересчёт partial_score из сохранённых kpi_values (без БД)."""
-        results = [KpiResult(**v) for v in kpi_values]
+        """
+        Пересчёт partial_score из сохранённых kpi_values (без БД).
+        Для binary_auto: manager_override имеет приоритет над ai-score.
+        """
+        adjusted: list[dict] = []
+        for v in kpi_values:
+            item = dict(v)
+            if item.get("formula_type") == "binary_auto":
+                override = item.get("manager_override")
+                if override is not None:
+                    item["score"] = 100.0 if override else 0.0
+            adjusted.append(item)
+        results = [KpiResult(**v) for v in adjusted]
         return _compute_partial_score(results)
 
 

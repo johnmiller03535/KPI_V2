@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 
 
 KpiFormulaType = Literal[
@@ -59,6 +59,11 @@ class KpiResult(BaseModel):
     requires_review: bool = False        # confidence < 80
     ai_low_confidence: bool = False      # уверенность AI < 50% (новый флоу)
 
+    # Переопределение руководителем (binary_auto)
+    # None = не переопределял (используется ai_score)
+    # True/False = явное решение руководителя
+    manager_override: Optional[bool] = None
+
 
 class KpiEngineResult(BaseModel):
     kpi_results: list[KpiResult]
@@ -77,6 +82,11 @@ class BinaryManualUpdate(BaseModel):
     kpi_index: int
     score: int       # допустимые значения: 0 или 100 (проверяется в endpoint)
     comment: str = ""
+
+
+class BinaryAutoOverride(BaseModel):
+    kpi_index: int
+    manager_override: Optional[bool]  # True/False = решение; None = сбросить
 
 
 class PendingManualResponse(BaseModel):
