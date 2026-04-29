@@ -156,23 +156,22 @@ function BinaryAutoCard({
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, color: 'var(--text)' }}>
             {item.criterion}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: summaryText ? 10 : 0 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>
             {item.indicator}
           </div>
-          {summaryText && (
-            <div style={{
-              background: 'rgba(0,229,255,0.04)',
-              border: '1px solid rgba(0,229,255,0.1)',
-              borderRadius: 8,
-              padding: '10px 12px',
-              fontSize: 12,
-              color: 'var(--text)',
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-            }}>
-              {summaryText}
-            </div>
-          )}
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            borderRadius: 6,
+            padding: '10px 14px',
+            marginTop: 8,
+            marginBottom: 8,
+            fontStyle: 'italic',
+            fontSize: 13,
+            color: 'rgba(255,255,255,0.6)',
+            lineHeight: 1.6,
+          }}>
+            {summaryText || '—'}
+          </div>
           {item.confidence !== null && item.confidence !== undefined && (
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
