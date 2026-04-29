@@ -38,12 +38,19 @@ const STATUS_CLASS: Record<string, string> = {
   draft:     'badge-dim',
 }
 
+function effectiveKpiScore(k: any): number | null {
+  if (k.formula_type === 'binary_auto' && k.manager_override !== null && k.manager_override !== undefined) {
+    return k.manager_override ? 100 : 0
+  }
+  return k.score ?? null
+}
+
 function computeScore(kpiValues: any[] | null): number | null {
   if (!kpiValues || kpiValues.length === 0) return null
-  const scored = kpiValues.filter(k => k.score !== null && k.score !== undefined)
+  const scored = kpiValues.filter(k => effectiveKpiScore(k) !== null)
   if (scored.length === 0) return null
-  const sw = scored.reduce((s, k) => s + k.weight, 0)
-  return Math.round(scored.reduce((s, k) => s + k.score * k.weight, 0) / sw)
+  const sw = scored.reduce((s: number, k: any) => s + k.weight, 0)
+  return Math.round(scored.reduce((s: number, k: any) => s + (effectiveKpiScore(k) as number) * k.weight, 0) / sw)
 }
 
 const FILTERS = [

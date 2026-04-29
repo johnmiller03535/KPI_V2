@@ -215,11 +215,14 @@ async def decide_submission(
     sub.reviewer_comment = body.comment
     sub.reviewed_at = datetime.now(timezone.utc)
 
-    # Пересчёт финального балла с учётом manager_override
+    # Диагностический лог финального балла
     if sub.kpi_values:
-        final_score, _, _ = kpi_engine_service.compute_score_from_kpi_values(sub.kpi_values)
-        if final_score is not None:
-            sub.partial_score = final_score
+        final_score, total_w, scored_w = kpi_engine_service.compute_score_from_kpi_values(sub.kpi_values)
+        logger.info(
+            f"decide_submission: id={submission_id} status={sub.status} "
+            f"final_score={final_score} total_weight={total_w} scored_weight={scored_w} "
+            f"overrides={[(i, v.get('manager_override')) for i, v in enumerate(sub.kpi_values) if v.get('formula_type') == 'binary_auto']}"
+        )
 
     await db.commit()
 
