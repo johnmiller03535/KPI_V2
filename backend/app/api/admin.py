@@ -603,6 +603,19 @@ async def create_test_submissions(
     return {"created": len(created), "submissions": created}
 
 
+@router.post("/reload-kpi-mapping")
+async def reload_kpi_mapping(
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Перезагрузить KPI_Mapping.xlsx без перезапуска бэкенда."""
+    stats = kpi_mapping_service.reload()
+    return {
+        "status": "ok",
+        "roles": stats["roles"],
+        "indicators": stats["indicators"],
+    }
+
+
 @router.get("/sync-logs")
 async def get_sync_logs_admin(
     db: AsyncSession = Depends(get_db),

@@ -112,6 +112,15 @@ class KpiMappingService:
         except Exception as e:
             logger.error(f"Ошибка загрузки KPI_Mapping: {e}")
 
+    def reload(self) -> dict:
+        """Сбрасывает кэш и перечитывает KPI_Mapping.xlsx заново."""
+        self._loaded = False
+        self._roles = {}
+        self._indicators = {}
+        self._load()
+        total = sum(len(v) for v in self._indicators.values())
+        return {"roles": len(self._roles), "indicators": total}
+
     def get_kpi_structure(self, role_id: str) -> KpiStructure:
         """Возвращает KPI-структуру по role_id: три группы + суммарный вес."""
         self._load()
