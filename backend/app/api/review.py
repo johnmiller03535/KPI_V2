@@ -105,6 +105,7 @@ def _build_submission_response(sub: KpiSubmission, emp: Optional[Employee]) -> S
         bin_schedule_summary=sub.bin_schedule_summary,
         bin_safety_summary=sub.bin_safety_summary,
         kpi_values=sub.kpi_values,
+        summary_text=sub.summary_text,
         submitted_at=sub.submitted_at,
         ai_generated_at=sub.ai_generated_at,
     )
@@ -141,8 +142,14 @@ async def get_submissions_for_review(
         query = query.where(KpiSubmission.status != SubmissionStatus.draft)
 
     result = await db.execute(query)
+    subs = result.scalars().all()
+    logger.info(
+        f"Review query: user={current_user.redmine_id}, status_filter={status!r}, "
+        f"subordinate_ids={subordinate_ids}, found={len(subs)}, "
+        f"statuses={[s.status for s in subs]}"
+    )
     response = []
-    for sub in result.scalars().all():
+    for sub in subs:
         emp_res = await db.execute(
             select(Employee).where(Employee.redmine_id == sub.employee_redmine_id)
         )
