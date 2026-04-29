@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { NavBar } from '@/components/NavBar'
+import { computeScore } from '@/lib/kpiScore'
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
@@ -30,13 +31,6 @@ type ReviewSub = {
 
 // ─── Хелперы ─────────────────────────────────────────────────────────────────
 
-function computeScore(kpiValues: any[] | null): number | null {
-  if (!kpiValues || kpiValues.length === 0) return null
-  const scored = kpiValues.filter((k: any) => k.score !== null && k.score !== undefined)
-  if (scored.length === 0) return null
-  const sw = scored.reduce((s: number, k: any) => s + k.weight, 0)
-  return sw > 0 ? Math.round(scored.reduce((s: number, k: any) => s + k.score * k.weight, 0) / sw) : null
-}
 
 function computeKpiStats(kpiValues: any[] | null) {
   if (!kpiValues || kpiValues.length === 0) return null
