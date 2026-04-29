@@ -22,6 +22,7 @@ class SubmissionForReview(BaseModel):
     bin_schedule_summary: Optional[str]
     bin_safety_summary: Optional[str]
     kpi_values: Optional[list[Any]]
+    summary_text: Optional[str]
     submitted_at: Optional[datetime]
     ai_generated_at: Optional[datetime]
 
