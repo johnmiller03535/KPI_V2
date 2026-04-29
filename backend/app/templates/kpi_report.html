@@ -291,63 +291,6 @@
   </tbody>
 </table>
 
-{% if kpi_results %}
-<div class="kpi-summary-section">
-  <div class="kpi-summary-title">Детализация показателей эффективности и результативности</div>
-  <table class="kpi-summary-table">
-    <thead>
-      <tr>
-        <th class="kpi-sum-num">№</th>
-        <th class="kpi-sum-ind">Показатель</th>
-        <th class="kpi-sum-crit">Критерий / Методика</th>
-        <th class="kpi-sum-wt">Вес</th>
-        <th class="kpi-sum-fact">Факт / Результат</th>
-        <th class="kpi-sum-sc">Оценка</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for kpi in kpi_results %}
-      <tr class="{% if kpi.is_common %}kpi-sum-common{% endif %}">
-        <td class="kpi-sum-num">{{ loop.index }}</td>
-        <td class="kpi-sum-ind">
-          {{ (kpi.indicator or '')[:100] }}{% if kpi.indicator and kpi.indicator|length > 100 %}…{% endif %}
-          {% if kpi.cumulative %}<span class="tag-cum">нараст.</span>{% endif %}
-          {% if kpi.requires_review %}<span class="tag-rev">*</span>{% endif %}
-        </td>
-        <td class="kpi-sum-crit">
-          {{ (kpi.criterion or '')[:140] }}{% if kpi.criterion and kpi.criterion|length > 140 %}…{% endif %}
-        </td>
-        <td class="kpi-sum-wt">{{ kpi.weight }}%</td>
-        <td class="kpi-sum-fact">
-          {% if kpi.kpi_type == 'binary_auto' %}
-            {{ (kpi.summary or '')[:200] }}{% if kpi.summary and kpi.summary|length > 200 %}…{% endif %}
-          {% elif kpi.kpi_type == 'binary_manual' %}
-            {{ kpi.reviewer_comment or '—' }}
-          {% else %}
-            {% if kpi.fact_value is not none %}{{ kpi.fact_value }}{% else %}не указано{% endif %}
-          {% endif %}
-        </td>
-        <td class="kpi-sum-sc {% if kpi.score == 100 %}sc-done{% elif kpi.score == 0 %}sc-fail{% elif kpi.score is none %}sc-empty{% else %}sc-part{% endif %}">
-          {% if kpi.score is not none %}{{ kpi.score | int }}%{% else %}—{% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-    <tfoot>
-      <tr class="kpi-sum-total">
-        <td colspan="3">ИТОГОВАЯ ОЦЕНКА</td>
-        <td class="kpi-sum-wt">100%</td>
-        <td></td>
-        <td class="kpi-sum-sc sc-total">{{ total_score | int }}%</td>
-      </tr>
-    </tfoot>
-  </table>
-  {% if has_review_flags %}
-  <p class="kpi-footnote">* — показатель потребовал дополнительной проверки руководителем</p>
-  {% endif %}
-</div>
-{% endif %}
-
 <div class="sign-block">
   <div class="sign-line">
     <span>{{ reviewer_title }}</span>

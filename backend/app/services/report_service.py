@@ -106,7 +106,8 @@ class ReportService:
         self,
         submission: KpiSubmission,
         employee: Optional[Employee],
-        reviewer_name: Optional[str] = None,
+        reviewer_emp: Optional[Employee] = None,
+        period_dates: Optional[tuple] = None,
     ) -> dict:
         role_info = kpi_mapping_service.get_role_info(submission.position_id) if submission.position_id else None
 
@@ -226,12 +227,29 @@ class ReportService:
         )
         total_result += 0.10 * sf_num
 
+        # --- Период: даты или fallback на название ---
+        if period_dates:
+            date_start, date_end = period_dates
+            period_display = f"{date_start.strftime('%d.%m.%Y')} — {date_end.strftime('%d.%m.%Y')}"
+        else:
+            period_display = submission.period_name
+
+        # --- Подпись руководителя ---
+        if reviewer_emp:
+            role_id = kpi_mapping_service.pos_id_to_role_id(reviewer_emp.position_id or "")
+            r_info = kpi_mapping_service.get_role_info(role_id) if role_id else None
+            reviewer_title = r_info["role"] if r_info else "Руководитель"
+            reviewer_name = reviewer_emp.full_name
+        else:
+            reviewer_title = "Руководитель"
+            reviewer_name = submission.reviewer_login or ""
+
         return {
             # Шапка
             "employee_full_name": employee.full_name if employee else submission.employee_login,
             "department_name":    employee.department_name if employee else "",
             "role_name":          role_info["role"] if role_info else (submission.position_id or ""),
-            "period_name":        submission.period_name,
+            "period_name":        period_display,
 
             # Специфические
             "specific_kpis":           specific_kpis,
@@ -258,8 +276,8 @@ class ReportService:
             "premium_proposal": f"{total_result:.2f}",
 
             # Подпись
-            "reviewer_title": "Руководитель",
-            "reviewer_name":  reviewer_name or "",
+            "reviewer_title": reviewer_title,
+            "reviewer_name":  reviewer_name,
 
             # Мета
             "generated_at": datetime.now(timezone.utc).strftime("%d.%m.%Y"),
@@ -295,7 +313,20 @@ class ReportService:
         )
         emp = emp_res.scalar_one_or_none()
 
-        context = self._build_context(sub, emp, reviewer_name=sub.reviewer_login)
+        period_res = await db.execute(
+            select(Period).where(Period.id == sub.period_id)
+        )
+        period = period_res.scalar_one_or_none()
+        period_dates = (period.date_start, period.date_end) if period else None
+
+        reviewer_emp = None
+        if sub.reviewer_redmine_id:
+            rev_res = await db.execute(
+                select(Employee).where(Employee.redmine_id == sub.reviewer_redmine_id)
+            )
+            reviewer_emp = rev_res.scalar_one_or_none()
+
+        context = self._build_context(sub, emp, reviewer_emp=reviewer_emp, period_dates=period_dates)
         html = self.render_html(context)
         pdf_bytes = self.generate_pdf_bytes(html)
 
