@@ -185,15 +185,24 @@ export default function ReviewPage() {
                     )}
                     <div style={{ display: 'flex', gap: 8 }}>
                       {sub.status === 'approved' && (
-                        <a
-                          href={`/api/reports/${sub.id}/pdf`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
                           className="cyber-btn cyber-btn-primary"
-                          style={{ textDecoration: 'none', padding: '7px 14px', fontSize: 12 }}
+                          style={{ padding: '7px 14px', fontSize: 12 }}
+                          onClick={() => {
+                            const token = localStorage.getItem('access_token')
+                            fetch(`/api/reports/${sub.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+                              .then(r => r.ok ? r.blob() : Promise.reject(r.status))
+                              .then(blob => {
+                                const url = URL.createObjectURL(blob)
+                                const a = document.createElement('a')
+                                a.href = url; a.download = `KPI_${sub.period_name}.pdf`; a.click()
+                                URL.revokeObjectURL(url)
+                              })
+                              .catch(e => alert(`Ошибка PDF (${e})`))
+                          }}
                         >
                           📄 PDF
-                        </a>
+                        </button>
                       )}
                       <button
                         className="cyber-btn cyber-btn-primary"

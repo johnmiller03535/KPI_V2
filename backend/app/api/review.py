@@ -207,6 +207,13 @@ async def decide_submission(
     sub.reviewer_login = current_user.login
     sub.reviewer_comment = body.comment
     sub.reviewed_at = datetime.now(timezone.utc)
+
+    # Пересчёт финального балла с учётом manager_override
+    if sub.kpi_values:
+        final_score, _, _ = kpi_engine_service.compute_score_from_kpi_values(sub.kpi_values)
+        if final_score is not None:
+            sub.partial_score = final_score
+
     await db.commit()
 
     # Автоматическая финализация при утверждении

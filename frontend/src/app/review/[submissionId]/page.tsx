@@ -613,6 +613,21 @@ export default function ReviewDetailPage({
     })
   }, [])
 
+  function handleDownloadPdf() {
+    const token = localStorage.getItem('access_token')
+    fetch(`/api/reports/${submissionId}/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.blob() : Promise.reject(r.status))
+      .then(blob => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `KPI_${submission?.period_name || submissionId}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+      .catch(e => alert(`Ошибка генерации PDF (${e})`))
+  }
+
   async function handleDecide(approved: boolean, rejectReason?: string) {
     setDeciding(true)
     try {
@@ -872,10 +887,8 @@ export default function ReviewDetailPage({
             >
               ❌ Отклонить
             </button>
-            <a
-              href={`/api/reports/${submissionId}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleDownloadPdf}
               style={{
                 padding: '11px 20px',
                 borderRadius: 10,
@@ -885,13 +898,12 @@ export default function ReviewDetailPage({
                 fontWeight: 600,
                 fontSize: 13,
                 fontFamily: 'Exo 2, sans-serif',
-                textDecoration: 'none',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
               }}
             >
               📄 Предпросмотр PDF
-            </a>
+            </button>
           </div>
         ) : submission.status === 'approved' ? (
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -903,15 +915,13 @@ export default function ReviewDetailPage({
             }}>
               ✅ Отчёт утверждён
             </div>
-            <a
-              href={`/api/reports/${submissionId}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleDownloadPdf}
               className="cyber-btn cyber-btn-primary"
-              style={{ textDecoration: 'none', padding: '11px 20px', fontSize: 13 }}
+              style={{ padding: '11px 20px', fontSize: 13 }}
             >
               📄 Скачать PDF
-            </a>
+            </button>
           </div>
         ) : submission.status === 'rejected' ? (
           <div style={{
