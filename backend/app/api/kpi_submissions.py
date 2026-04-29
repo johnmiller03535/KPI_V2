@@ -172,14 +172,12 @@ async def load_summary_from_redmine(
 
     absence_hours: float = sum(float(e.get("hours", 0)) for e in absence_entries)
 
-    # Уникальные названия рабочих задач (порядок сохранён, дубли убраны)
-    seen: set[str] = set()
-    unique_tasks: list[str] = []
-    for e in work_entries:
-        subject = (e.get("issue") or {}).get("subject", "")
-        if subject and subject not in seen:
-            seen.add(subject)
-            unique_tasks.append(subject)
+    # Все названия рабочих задач (с повторами — для подсчёта количества в промпте)
+    all_task_subjects: list[str] = [
+        (e.get("issue") or {}).get("subject", "")
+        for e in work_entries
+        if (e.get("issue") or {}).get("subject", "")
+    ]
 
     # ── Получаем role_name для промпта ───────────────────────────────────────
     role_name = ""
@@ -194,10 +192,8 @@ async def load_summary_from_redmine(
 
     # ── AI генерирует связный текст саммари ─────────────────────────────────
     summary_text = await ai_service.generate_summary_from_tasks(
-        unique_tasks=unique_tasks,
+        task_subjects=all_task_subjects,
         role_name=role_name,
-        period_start=period_start,
-        period_end=period_end,
         absence_hours=absence_hours,
     )
 

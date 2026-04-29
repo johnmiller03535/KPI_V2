@@ -3,6 +3,7 @@ import json
 import time
 import uuid
 import httpx
+from collections import Counter
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -249,18 +250,21 @@ class AIService:
 
     async def generate_summary_from_tasks(
         self,
-        unique_tasks: list[str],
+        task_subjects: list[str],
         role_name: str = "",
-        period_start: str = "",
-        period_end: str = "",
         absence_hours: float = 0.0,
     ) -> str:
         """
-        Генерирует связное саммари из списка уникальных названий задач через AI.
-        Вызывается при load-summary. Отпуск/больничный исключаются из основного текста,
-        упоминаются только как примечание.
+        Генерирует связное саммари из списка названий задач через AI.
+        Вызывается при load-summary. Принимает список с повторами — считает количество
+        каждой задачи через Counter. Отпуск/больничный упоминается только как примечание.
         """
-        tasks_text = "\n".join(f"- {t}" for t in unique_tasks) if unique_tasks else ""
+        task_counts = Counter(task_subjects)
+        tasks_text = "\n".join(
+            f"- {task} (×{count})" if count > 1 else f"- {task}"
+            for task, count in task_counts.most_common()
+        ) if task_counts else ""
+
         absence_note = (
             f"Примечание: {int(absence_hours)} ч — отпуск/больничный/командировка "
             f"(не учитывается в оценке KPI)"
@@ -268,22 +272,22 @@ class AIService:
         )
 
         prompt = f"""Ты — система подготовки отчётов KPI государственного учреждения.
-Составь формальное саммари выполненных работ.
+Составь формальное саммари выполненных работ сотрудника.
 
 Должность: {role_name}
-Период: {period_start} — {period_end}
 
-Выполненные задачи:
+Выполненные задачи (×N = количество раз):
 {tasks_text if tasks_text else "(список пуст)"}
 
 {absence_note}
 
 Требования:
-1. Сгруппируй задачи по смыслу (аналитика, совещания, разработка, координация)
-2. Связный текст 3-5 предложений без упоминания часов и дат
-3. Деловой стиль: "Проведена...", "Подготовлены...", "Выполнена..."
-4. Только факты из списка — не придумывай
-5. Если список пуст — напиши: "Рабочие задачи за период не зафиксированы"
+1. Деловой стиль. Напиши столько предложений сколько нужно, чтобы полно отразить все виды выполненных работ. Не сокращай если видов работ много.
+2. Период НЕ упоминать.
+3. Повторяющиеся мероприятия указывать с количеством: "Проведено 4 совещания по...", "Подготовлено 3 аналитических отчёта..."
+4. Группируй по смыслу: совещания, аналитика, разработка, координация.
+5. Только факты из списка — не придумывай.
+6. Если список пуст — напиши: "Рабочие задачи за период не зафиксированы"
 """
 
         try:
@@ -291,9 +295,12 @@ class AIService:
             return result.strip()
         except Exception as e:
             logger.error(f"generate_summary_from_tasks error: {e}")
-            if not unique_tasks:
+            if not task_subjects:
                 return "Рабочие задачи за период не зафиксированы."
-            return "\n".join(f"- {t}" for t in unique_tasks[:15])
+            return "\n".join(
+                f"- {task} (×{count})" if count > 1 else f"- {task}"
+                for task, count in Counter(task_subjects).most_common(15)
+            )
 
     async def summarize_time_entries(self, time_entries: list[dict]) -> str:
         """Общее саммари по трудозатратам."""
