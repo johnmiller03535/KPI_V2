@@ -242,5 +242,37 @@ class RedmineClient:
                 logger.error(f"get_trackers request error: {e}")
                 return {}
 
+    async def upload_file(self, file_bytes: bytes, filename: str) -> dict:
+        """POST /uploads.json — загрузить файл, получить token."""
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            response = await client.post(
+                f"{self.base_url}/uploads.json",
+                headers={**self._headers(), "Content-Type": "application/octet-stream"},
+                content=file_bytes,
+                params={"filename": filename},
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def attach_to_issue(self, issue_id: int, token: str,
+                               filename: str, content_type: str) -> None:
+        """PUT /issues/{id}.json — прикрепить загруженный файл к задаче."""
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
+            response = await client.put(
+                f"{self.base_url}/issues/{issue_id}.json",
+                headers={**self._headers(), "Content-Type": "application/json"},
+                json={
+                    "issue": {
+                        "uploads": [{
+                            "token": token,
+                            "filename": filename,
+                            "content_type": content_type,
+                        }]
+                    }
+                },
+            )
+            if response.status_code not in (200, 204):
+                logger.error(f"attach_to_issue error {response.status_code}: {response.text[:200]}")
+
 
 redmine_client = RedmineClient()

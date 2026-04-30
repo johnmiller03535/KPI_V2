@@ -1,13 +1,12 @@
 import logging
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.redmine import redmine_client
+from app.config import settings
 from app.models.period import Period, PeriodStatus
 from app.models.period_exception import PeriodException, ExceptionType
 from app.models.employee import Employee, EmployeeStatus
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
-from app.services.kpi_mapping_service import kpi_mapping_service
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +29,8 @@ CF_ROLE_ID = 206     # Идентификатор должности
 
 
 def _build_issue_subject(employee: Employee, period: Period) -> str:
-    """Формирует название задачи: 'Отчёт KPI — Фамилия — Март 2026'"""
-    return f"Отчёт KPI — {employee.lastname} — {period.name}"
+    """Формирует название задачи: 'Отчёт KPI — Фамилия Имя — Март 2026'"""
+    return f"Отчёт KPI — {employee.lastname} {employee.firstname} — {period.name}"
 
 
 def _build_issue_description(employee: Employee, period: Period) -> str:
@@ -73,11 +72,8 @@ class PeriodService:
 
         logger.info(f"Создание задач для периода '{period.name}': {len(employees)} сотрудников")
 
-        # Загружаем список трекеров из Redmine один раз
-        redmine_trackers: dict[str, int] = {}
-        if not dry_run:
-            redmine_trackers = await redmine_client.get_trackers()
-            logger.info(f"Загружено трекеров из Redmine: {len(redmine_trackers)}")
+        tracker_id = settings.kpi_tracker_id
+        logger.info(f"Используем единый трекер KPI_TRACKER_ID={tracker_id}")
 
         for emp in employees:
             try:
@@ -122,15 +118,9 @@ class PeriodService:
                     })
                     continue
 
-                tracker_id = self._get_tracker_id(emp, project_id, redmine_trackers)
-
-                # Диагностическое логирование перед созданием задачи
-                _role_id = kpi_mapping_service.pos_id_to_role_id(str(emp.position_id)) if emp.position_id else None
-                _tracker_name = f"KPI_ОТЧЁТ_{_role_id}" if _role_id else "—"
                 logger.info(
                     f"CREATE TASK | {emp.full_name} | login={emp.login} | "
-                    f"position_id={emp.position_id} | role_id={_role_id} | "
-                    f"tracker_name={_tracker_name} | tracker_id={tracker_id} | "
+                    f"position_id={emp.position_id} | tracker_id={tracker_id} | "
                     f"project={project_id}"
                 )
 
@@ -189,50 +179,5 @@ class PeriodService:
             f"пропущено: {stats['skipped']}, ошибок: {stats['errors']}"
         )
         return stats
-
-    def _get_tracker_id(self, employee: Employee, project_id: str,
-                        redmine_trackers: dict[str, int]) -> int:
-        """
-        Возвращает tracker_id для сотрудника по его role_id.
-        Паттерн имени трекера: KPI_ОТЧЁТ_{role_id}, напр. KPI_ОТЧЁТ_ЦТР_КОН_075.
-        Если трекер не найден — fallback на первый трекер подразделения.
-        """
-        dept_tracker_fallback = {
-            "kpi-ruk": 186,
-            "kpi-org": 188,
-            "kpi-pra": 196,
-            "kpi-kza": 204,
-            "kpi-zpd": 212,
-            "kpi-zpr": 222,
-            "kpi-tsr": 232,
-            "kpi-feo": 242,
-            "kpi-iaa": 252,
-        }
-        fallback = dept_tracker_fallback.get(project_id, 186)
-
-        if not employee.position_id:
-            logger.warning(f"{employee.login}: нет position_id, используем fallback tracker {fallback}")
-            return fallback
-
-        role_id = kpi_mapping_service.pos_id_to_role_id(str(employee.position_id))
-        if not role_id:
-            logger.warning(
-                f"{employee.login}: position_id={employee.position_id} не найден в KPI_Mapping, "
-                f"используем fallback tracker {fallback}"
-            )
-            return fallback
-
-        tracker_name = f"KPI_ОТЧЁТ_{role_id}"
-        tracker_id = redmine_trackers.get(tracker_name)
-        if not tracker_id:
-            logger.warning(
-                f"{employee.login}: трекер '{tracker_name}' не найден в Redmine, "
-                f"используем fallback tracker {fallback}"
-            )
-            return fallback
-
-        logger.info(f"{employee.login}: role_id={role_id}, tracker='{tracker_name}' (id={tracker_id})")
-        return tracker_id
-
 
 period_service = PeriodService()

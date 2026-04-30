@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # chat_id финансового блока через запятую, напр. "123456,654321"
     finance_telegram_ids: str = ""
 
+    # KPI трекер в Redmine (единый для всех задач)
+    kpi_tracker_id: int = 1
+
     # GigaChat (основной AI-провайдер)
     gigachat_api_key: str = ""
 
