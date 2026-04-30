@@ -65,6 +65,8 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
   const [submitting, setSubmitting] = useState(false)
   const [aiResultShown, setAiResultShown] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const indicatorDebounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const [indicatorSummaries, setIndicatorSummaries] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem('user') : null
@@ -86,9 +88,18 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
       setSubmission(subRes.data)
       setScoreData(scoreRes.data)
       if (structRes.data?.role_info) setRoleInfo(structRes.data.role_info)
-      // Восстановить summary_text из БД если уже загружали раньше
       if (subRes.data?.summary_text) {
         setSummaryText(subRes.data.summary_text)
+      }
+      // Восстановить per-indicator summaries из kpi_values
+      if (subRes.data?.kpi_values) {
+        const map: Record<string, string> = {}
+        for (const k of subRes.data.kpi_values) {
+          if (k.formula_type === 'binary_auto' && k.criterion && k.summary) {
+            map[k.criterion] = k.summary
+          }
+        }
+        setIndicatorSummaries(map)
       }
     } catch (e) {
       console.error(e)
@@ -112,9 +123,16 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
       const res = await api.post(`/submissions/my/${submissionId}/load-summary`)
       const data = res.data
       setSummaryText(data.summary_text)
-      // Обновить kpi_values в state (структура инициализирована)
       if (data.kpi_values) {
-        setSubmission(prev => prev ? { ...prev, kpi_values: data.kpi_values } : prev)
+        setSubmission(prev => prev ? { ...prev, kpi_values: data.kpi_values, summary_text: data.summary_text } : prev)
+        // Восстановить per-indicator summaries
+        const map: Record<string, string> = {}
+        for (const k of data.kpi_values) {
+          if (k.formula_type === 'binary_auto' && k.criterion && k.summary) {
+            map[k.criterion] = k.summary
+          }
+        }
+        setIndicatorSummaries(map)
       }
       await refreshScore()
     } catch (err: any) {
@@ -124,7 +142,7 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
     }
   }
 
-  // ─── Редактирование саммари с debounce ────────────────────────────────────
+  // ─── Редактирование общего саммари с debounce ────────────────────────────
 
   const handleSummaryChange = (text: string) => {
     setSummaryText(text)
@@ -134,6 +152,23 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
         await api.patch(`/submissions/my/${submissionId}/summary`, { summary_text: text })
       } catch (e) {
         console.error('Ошибка сохранения саммари:', e)
+      }
+    }, 800)
+  }
+
+  // ─── Редактирование саммари конкретного показателя ────────────────────────
+
+  const handleIndicatorSummaryChange = (criterion: string, text: string) => {
+    setIndicatorSummaries(prev => ({ ...prev, [criterion]: text }))
+    if (indicatorDebounceRefs.current[criterion]) clearTimeout(indicatorDebounceRefs.current[criterion])
+    indicatorDebounceRefs.current[criterion] = setTimeout(async () => {
+      try {
+        await api.patch(`/submissions/my/${submissionId}/summary`, {
+          summary_text: text,
+          indicator_id: criterion,
+        })
+      } catch (e) {
+        console.error('Ошибка сохранения саммари показателя:', e)
       }
     }, 800)
   }
@@ -314,48 +349,6 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
           </div>
         )}
 
-        {/* ─── Блок саммари ─────────────────────────────────────────────────── */}
-        {summaryText !== null && isEditable && (
-          <div className="cyber-card" style={{ marginBottom: 28 }}>
-            <div style={{ color: 'var(--accent)', fontSize: 12, fontFamily: 'Orbitron, sans-serif', letterSpacing: 2, marginBottom: 10 }}>
-              САММАРИ ВЫПОЛНЕННЫХ РАБОТ
-            </div>
-            <textarea
-              value={summaryText}
-              onChange={e => handleSummaryChange(e.target.value)}
-              rows={7}
-              style={{
-                width: '100%', boxSizing: 'border-box',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(0,229,255,0.25)',
-                borderRadius: 8, color: 'var(--text)',
-                padding: '12px 14px',
-                fontFamily: 'Exo 2, sans-serif',
-                fontSize: 14, lineHeight: 1.6,
-                resize: 'vertical',
-              }}
-            />
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>
-              Отредактируйте описание выполненных работ. Сохраняется автоматически.
-            </div>
-          </div>
-        )}
-
-        {/* Показать саммари в read-only если уже submitted/approved */}
-        {summaryText !== null && !isEditable && (
-          <div className="cyber-card" style={{ marginBottom: 28 }}>
-            <div style={{ color: 'var(--accent)', fontSize: 12, fontFamily: 'Orbitron, sans-serif', letterSpacing: 2, marginBottom: 10 }}>
-              САММАРИ ВЫПОЛНЕННЫХ РАБОТ
-            </div>
-            <div style={{
-              fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.7,
-              whiteSpace: 'pre-wrap',
-            }}>
-              {summaryText}
-            </div>
-          </div>
-        )}
-
         {/* СЕКЦИЯ 1 — AI-оценка */}
         {binaryAuto.length > 0 && (
           <section style={{ marginBottom: 32 }}>
@@ -388,13 +381,8 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
                       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
                         {item.criterion}
                       </div>
-                      {item.summary && (
-                        <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', lineHeight: 1.5 }}>
-                          {item.summary}
-                        </div>
-                      )}
                       {item.score !== null && item.confidence !== null && (
-                        <div style={{ marginTop: 8 }}>
+                        <div style={{ marginTop: 4, marginBottom: 8 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>
                             Уверенность AI: {item.confidence}%
                           </div>
@@ -405,6 +393,39 @@ export default function KpiFormPage({ params }: { params: { submissionId: string
                             }} />
                           </div>
                         </div>
+                      )}
+                      {/* Саммари по этому показателю */}
+                      {isEditable ? (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ fontSize: 11, color: 'var(--accent)', marginBottom: 5, letterSpacing: 1 }}>
+                            САММАРИ ПО ПОКАЗАТЕЛЮ
+                          </div>
+                          <textarea
+                            value={indicatorSummaries[item.criterion] ?? item.summary ?? ''}
+                            onChange={e => handleIndicatorSummaryChange(item.criterion, e.target.value)}
+                            rows={4}
+                            placeholder="Нажмите «Загрузить саммари» для автозаполнения"
+                            style={{
+                              width: '100%', boxSizing: 'border-box',
+                              background: 'rgba(255,255,255,0.04)',
+                              border: '1px solid rgba(0,229,255,0.2)',
+                              borderRadius: 8, color: 'var(--text)',
+                              padding: '10px 12px',
+                              fontFamily: 'Exo 2, sans-serif',
+                              fontSize: 13, lineHeight: 1.6,
+                              resize: 'vertical',
+                            }}
+                          />
+                          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                            Сохраняется автоматически
+                          </div>
+                        </div>
+                      ) : (
+                        (indicatorSummaries[item.criterion] || item.summary) && (
+                          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                            {indicatorSummaries[item.criterion] || item.summary}
+                          </div>
+                        )
                       )}
                     </div>
                     <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>

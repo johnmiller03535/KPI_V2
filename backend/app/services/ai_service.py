@@ -325,6 +325,79 @@ class AIService:
             logger.error(f"generate_summary_from_tasks error: {e}")
             return entries_text
 
+    async def generate_indicator_summary(
+        self,
+        indicator: str,
+        criterion: str,
+        work_entries: list[dict],
+        role_name: str = "",
+        used_tasks: set[str] | None = None,
+    ) -> tuple[str, set[str]]:
+        """
+        Генерирует деловое саммари по одному показателю KPI.
+        Возвращает (summary_text, set_of_used_task_subjects).
+
+        used_tasks — названия задач, уже использованных предыдущими показателями,
+        чтобы исключить дублирование между показателями.
+        """
+        if not work_entries:
+            return "Рабочие задачи за период не зафиксированы.", set()
+
+        used_tasks = used_tasks or set()
+
+        # Строим список доступных задач (исключаем уже использованные)
+        raw_lines: list[str] = []
+        for entry in work_entries:
+            subject = (entry.get("issue") or {}).get("subject", "Без задачи")
+            if subject in used_tasks:
+                continue
+            comment = (entry.get("comments") or "").strip()
+            if comment and comment.lower() != subject.lower():
+                raw_lines.append(f"[{subject}] {comment}")
+            else:
+                raw_lines.append(f"[{subject}]")
+
+        tasks_text = "\n".join(dict.fromkeys(raw_lines))
+
+        if not tasks_text.strip():
+            return "Работы по данному направлению не зафиксированы.", set()
+
+        prompt = f"""Составь деловое саммари выполненных работ по конкретному показателю KPI.
+
+Должность: {role_name}
+Показатель: {indicator}
+Критерий: {criterion}
+
+Все выполненные задачи за период:
+{tasks_text}
+
+Из этого списка выбери ТОЛЬКО задачи которые относятся к данному показателю и критерию.
+Напиши связное деловое саммари (3-5 предложений).
+Стиль: "Проведены...", "Подготовлены...", "Выполнена..."
+Период НЕ упоминать. Только факты из задач.
+Если подходящих задач нет — "Работы по данному направлению не зафиксированы."
+НЕ выводи список задач — только итоговый текст саммари.
+
+Ответь СТРОГО в формате JSON (без markdown-блоков):
+{{"summary": "текст саммари", "used_tasks": ["название задачи 1", "название задачи 2"]}}"""
+
+        try:
+            raw = await self._call_ai(prompt)
+            clean = raw.strip()
+            if clean.startswith("```"):
+                clean = clean.split("```")[1]
+                if clean.startswith("json"):
+                    clean = clean[4:]
+            data = json.loads(clean.strip())
+            summary = str(data.get("summary", "")).strip() or "Работы по данному направлению не зафиксированы."
+            selected = set(data.get("used_tasks") or [])
+            logger.info(f"generate_indicator_summary '{indicator[:40]}': {len(selected)} задач отобрано")
+            return summary, selected
+        except Exception as e:
+            logger.error(f"generate_indicator_summary error для '{indicator[:40]}': {e}")
+            # fallback: возвращаем сырой список задач как саммари
+            return tasks_text, set()
+
     async def summarize_time_entries(self, time_entries: list[dict]) -> str:
         """Общее саммари по трудозатратам."""
         if not time_entries:

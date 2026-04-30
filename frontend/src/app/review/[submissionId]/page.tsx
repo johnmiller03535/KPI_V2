@@ -170,7 +170,7 @@ function BinaryAutoCard({
             color: 'rgba(255,255,255,0.6)',
             lineHeight: 1.6,
           }}>
-            {summaryText || '—'}
+            {item.summary || summaryText || '—'}
           </div>
           {item.confidence !== null && item.confidence !== undefined && (
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>

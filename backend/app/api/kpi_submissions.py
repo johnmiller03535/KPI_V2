@@ -97,6 +97,7 @@ async def get_my_submission(
 
 class SummaryUpdate(BaseModel):
     summary_text: str
+    indicator_id: Optional[str] = None  # если задан — обновить summary конкретного показателя в kpi_values
 
 
 @router.post("/my/{submission_id}/load-summary")
@@ -234,6 +235,35 @@ async def load_summary_from_redmine(
                 "requires_review": False, "ai_low_confidence": False,
             })
 
+        # Генерируем саммари для каждого binary_auto показателя последовательно,
+        # передавая уже использованные задачи следующему показателю
+        auto_indices = [i for i, k in enumerate(kpi_values) if k.get("formula_type") == "binary_auto"]
+        if auto_indices and work_entries:
+            used_tasks: set[str] = set()
+            for idx in auto_indices:
+                try:
+                    indicator_summary, selected_tasks = await ai_service.generate_indicator_summary(
+                        indicator=kpi_values[idx]["indicator"],
+                        criterion=kpi_values[idx]["criterion"],
+                        work_entries=work_entries,
+                        role_name=role_name,
+                        used_tasks=used_tasks,
+                    )
+                    kpi_values[idx]["summary"] = indicator_summary
+                    used_tasks.update(selected_tasks)
+                except Exception as e:
+                    logger.warning(f"generate_indicator_summary failed для idx={idx}: {e}")
+                    kpi_values[idx]["summary"] = None
+
+            # Общее summary_text = объединение всех саммари (для совместимости)
+            all_summaries = [
+                kpi_values[i]["summary"]
+                for i in auto_indices
+                if kpi_values[i].get("summary")
+            ]
+            if all_summaries:
+                summary_text = "\n\n".join(all_summaries)
+
         sub.kpi_values = kpi_values
         flag_modified(sub, "kpi_values")
 
@@ -269,7 +299,25 @@ async def update_summary_text(
     if sub.status not in [SubmissionStatus.draft, SubmissionStatus.rejected]:
         raise HTTPException(status_code=400, detail="Нельзя изменить отчёт в текущем статусе")
 
-    sub.summary_text = body.summary_text
+    if body.indicator_id:
+        # Обновить summary конкретного показателя в kpi_values
+        kpi_values = list(sub.kpi_values) if sub.kpi_values else []
+        updated = False
+        for item in kpi_values:
+            if item.get("id") == body.indicator_id or item.get("criterion") == body.indicator_id:
+                item["summary"] = body.summary_text
+                updated = True
+                break
+        if updated:
+            sub.kpi_values = kpi_values
+            flag_modified(sub, "kpi_values")
+            # Пересчитать общий summary_text как объединение всех саммари
+            all_summaries = [k["summary"] for k in kpi_values if k.get("formula_type") == "binary_auto" and k.get("summary")]
+            if all_summaries:
+                sub.summary_text = "\n\n".join(all_summaries)
+    else:
+        sub.summary_text = body.summary_text
+
     await db.commit()
     return {"ok": True}
 
@@ -454,8 +502,10 @@ async def submit_for_review(
         if item.get("formula_type") != "binary_auto":
             continue
         try:
+            # Приоритет: саммари конкретного показателя, иначе общее summary_text
+            indicator_summary = item.get("summary") or sub.summary_text or ""
             ai_result = await ai_service.evaluate_binary_kpi_from_summary(
-                summary_text=sub.summary_text,
+                summary_text=indicator_summary,
                 criterion=item.get("criterion", ""),
                 indicator=item.get("indicator", ""),
                 role_name=role_name,

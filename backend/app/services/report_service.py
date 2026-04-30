@@ -146,9 +146,8 @@ class ReportService:
                 fact_display = "1" if effective_score == 100 else ("0" if effective_score == 0 else "—")
                 pct_display  = f"{effective_score:.0f}%" if effective_score is not None else "—"
                 result_val   = f"{weight_frac * (effective_score / 100):.2f}" if effective_score is not None else "—"
-                # Мероприятия = summary_text сотрудника (основной текст отчёта)
-                # AI reasoning убран — он идёт в отдельную колонку через kpi_results
-                measures = submission.summary_text or kv.get("summary") or "—"
+                # Мероприятия = саммари конкретного показателя, иначе общее summary_text
+                measures = kv.get("summary") or submission.summary_text or "—"
                 if manager_override is not None:
                     override_label = "Выполнено" if manager_override else "Не выполнено"
                     measures = f"{measures}\n(Решение руководителя: {override_label})".strip()
