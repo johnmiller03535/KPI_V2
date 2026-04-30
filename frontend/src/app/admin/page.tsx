@@ -1049,6 +1049,7 @@ function KpiTab() {
   )
 
   return (
+    <>
     <div className="fade-up">
 
       {/* ── СЕКЦИЯ 1: БИБЛИОТЕКА ПОКАЗАТЕЛЕЙ ── */}
@@ -1238,14 +1239,18 @@ function KpiTab() {
         </div>
       )}
 
+    </div>
+
       {/* ── МОДАЛЬНОЕ ОКНО ПОКАЗАТЕЛЯ ── */}
+      {/* Вынесено за пределы .fade-up: transform на .fade-up создаёт
+          новый containing block и ломает position:fixed внутри него */}
       {selectedIndicator && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
           onClick={() => setSelectedIndicator(null)}
         >
           <div
-            className="cyber-card fade-up"
+            className="cyber-card"
             style={{ maxWidth: 640, width: '100%', maxHeight: '80vh', overflowY: 'auto', padding: 28, position: 'relative' }}
             onClick={e => e.stopPropagation()}
           >
@@ -1313,6 +1318,6 @@ function KpiTab() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
