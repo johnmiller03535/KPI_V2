@@ -991,18 +991,18 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 function KpiTab() {
-  const [indicators, setIndicators] = React.useState<any[]>([])
-  const [cards, setCards] = React.useState<any[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [filterType, setFilterType] = React.useState('')
-  const [filterStatus, setFilterStatus] = React.useState('')
-  const [search, setSearch] = React.useState('')
-  const [selectedIndicator, setSelectedIndicator] = React.useState<any>(null)
-  const [selectedPosId, setSelectedPosId] = React.useState('')
-  const [card, setCard] = React.useState<any>(null)
-  const [cardLoading, setCardLoading] = React.useState(false)
+  const [indicators, setIndicators] = useState<any[]>([])
+  const [cards, setCards] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterType, setFilterType] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [search, setSearch] = useState('')
+  const [selectedIndicator, setSelectedIndicator] = useState<any>(null)
+  const [selectedPosId, setSelectedPosId] = useState('')
+  const [card, setCard] = useState<any>(null)
+  const [cardLoading, setCardLoading] = useState(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     const token = localStorage.getItem('token')
     Promise.all([
       fetch('/api/kpi/indicators?status=all', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
@@ -1013,7 +1013,7 @@ function KpiTab() {
     }).finally(() => setLoading(false))
   }, [])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!selectedPosId) { setCard(null); return }
     setCardLoading(true)
     const token = localStorage.getItem('token')
