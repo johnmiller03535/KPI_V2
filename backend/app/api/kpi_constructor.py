@@ -654,15 +654,24 @@ async def import_from_xlsx(
     imported_card_indicators = 0
     errors: list[str] = data.get("errors", [])
 
-    # Вставляем indicators (пропускаем существующие по name+formula_type)
+    # Маппинг: сгенерированный UUID импорта → реальный UUID в БД.
+    # Нужен для идемпотентности: если indicator уже существует с другим UUID,
+    # criteria и card_indicators должны ссылаться на существующий UUID.
+    ind_id_map: dict[str, str] = {}   # generated_id → db_id
+    card_id_map: dict[str, str] = {}  # generated_id → db_id
+
+    # Вставляем indicators — Variant 1: flush после каждого db.add
     for ind_data in data["indicators"]:
-        exists = await db.execute(
+        exists_res = await db.execute(
             select(KpiIndicator).where(
                 KpiIndicator.name == ind_data["name"],
                 KpiIndicator.formula_type == ind_data["formula_type"],
             )
         )
-        if exists.scalar_one_or_none():
+        existing = exists_res.scalar_one_or_none()
+        if existing:
+            # Показатель уже есть — запоминаем его реальный UUID
+            ind_id_map[ind_data["id"]] = str(existing.id)
             continue
         ind = KpiIndicator(
             id=ind_data["id"],
@@ -676,23 +685,24 @@ async def import_from_xlsx(
             created_by=ind_data["created_by"],
         )
         db.add(ind)
+        await db.flush()  # сразу записать в БД — criteria могут ссылаться на этот id
+        ind_id_map[ind_data["id"]] = ind_data["id"]
         imported_indicators += 1
 
-    await db.flush()
-
-    # Вставляем criteria (пропускаем по criterion text + indicator_id)
+    # Вставляем criteria — используем реальный indicator_id из ind_id_map
     for cr_data in data["criteria"]:
-        exists = await db.execute(
+        actual_ind_id = ind_id_map.get(cr_data["indicator_id"], cr_data["indicator_id"])
+        exists_res = await db.execute(
             select(KpiCriterion).where(
-                KpiCriterion.indicator_id == cr_data["indicator_id"],
+                KpiCriterion.indicator_id == actual_ind_id,
                 KpiCriterion.criterion == cr_data["criterion"],
             )
         )
-        if exists.scalar_one_or_none():
+        if exists_res.scalar_one_or_none():
             continue
         cr = KpiCriterion(
             id=cr_data["id"],
-            indicator_id=cr_data["indicator_id"],
+            indicator_id=actual_ind_id,
             criterion=cr_data["criterion"],
             numerator_label=cr_data["numerator_label"],
             denominator_label=cr_data["denominator_label"],
@@ -705,19 +715,20 @@ async def import_from_xlsx(
             common_text_negative=cr_data["common_text_negative"],
         )
         db.add(cr)
+        await db.flush()  # flush сразу — card_indicators ссылаются на criterion_id
         imported_criteria += 1
-
-    await db.flush()
 
     # Вставляем cards (пропускаем по pos_id + version)
     for card_data in data["cards"]:
-        exists = await db.execute(
+        exists_res = await db.execute(
             select(KpiRoleCard).where(
                 KpiRoleCard.pos_id == card_data["pos_id"],
                 KpiRoleCard.version == card_data["version"],
             )
         )
-        if exists.scalar_one_or_none():
+        existing_card = exists_res.scalar_one_or_none()
+        if existing_card:
+            card_id_map[card_data["id"]] = str(existing_card.id)
             continue
         card = KpiRoleCard(
             id=card_data["id"],
@@ -730,24 +741,27 @@ async def import_from_xlsx(
             created_by=card_data["created_by"],
         )
         db.add(card)
+        await db.flush()  # flush сразу — card_indicators ссылаются на card_id
+        card_id_map[card_data["id"]] = card_data["id"]
         imported_cards += 1
 
-    await db.flush()
-
-    # Вставляем card_indicators (пропускаем по uq_card_indicator)
+    # Вставляем card_indicators — используем реальные UUID из маппингов
     for ci_data in data["card_indicators"]:
+        actual_card_id = card_id_map.get(ci_data["card_id"], ci_data["card_id"])
+        actual_ind_id = ind_id_map.get(ci_data["indicator_id"], ci_data["indicator_id"])
+
         exists = await db.execute(
             select(KpiRoleCardIndicator).where(
-                KpiRoleCardIndicator.card_id == ci_data["card_id"],
-                KpiRoleCardIndicator.indicator_id == ci_data["indicator_id"],
+                KpiRoleCardIndicator.card_id == actual_card_id,
+                KpiRoleCardIndicator.indicator_id == actual_ind_id,
             )
         )
         if exists.scalar_one_or_none():
             continue
         ci = KpiRoleCardIndicator(
             id=ci_data["id"],
-            card_id=ci_data["card_id"],
-            indicator_id=ci_data["indicator_id"],
+            card_id=actual_card_id,
+            indicator_id=actual_ind_id,
             criterion_id=ci_data["criterion_id"],
             weight=ci_data["weight"],
             order_num=ci_data["order_num"],
