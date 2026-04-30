@@ -1003,10 +1003,9 @@ function KpiTab() {
   const [cardLoading, setCardLoading] = useState(false)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
     Promise.all([
-      fetch('/api/kpi/indicators?status=all', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-      fetch('/api/kpi/cards?status=active', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      api.get('/kpi/indicators?status=all').then(r => r.data),
+      api.get('/kpi/cards?status=active').then(r => r.data),
     ]).then(([inds, cds]) => {
       setIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
       setCards(Array.isArray(cds) ? cds : (cds.items ?? []))
@@ -1016,10 +1015,9 @@ function KpiTab() {
   useEffect(() => {
     if (!selectedPosId) { setCard(null); return }
     setCardLoading(true)
-    const token = localStorage.getItem('token')
-    fetch(`/api/kpi/cards/${selectedPosId}/active`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => setCard(data))
+    api.get(`/kpi/cards/${selectedPosId}/active`)
+      .then(r => setCard(r.data))
+      .catch(() => setCard(null))
       .finally(() => setCardLoading(false))
   }, [selectedPosId])
 
