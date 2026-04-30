@@ -108,7 +108,7 @@ export default function AdminPage() {
   const [syncing, setSyncing] = useState(false)
   const [reminding, setReminding] = useState(false)
   const [actionResult, setActionResult] = useState<{ ok: boolean; text: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'subordination' | 'audit'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'subordination' | 'audit' | 'kpi'>('overview')
   const [showDismissedModal, setShowDismissedModal] = useState(false)
   const [dismissedEmployees, setDismissedEmployees] = useState<DismissedEmployee[]>([])
   const [loadingDismissed, setLoadingDismissed] = useState(false)
@@ -201,6 +201,7 @@ export default function AdminPage() {
     { id: 'employees',      label: 'Сотрудники' },
     { id: 'subordination',  label: 'Подчинённость' },
     { id: 'audit',          label: 'Аудит' },
+    { id: 'kpi',            label: 'KPI-карточки' },
   ] as const
 
   if (loading) return (
@@ -530,6 +531,9 @@ export default function AdminPage() {
 
         {/* ══ ТАБ: АУДИТ ══ */}
         {activeTab === 'audit' && <AuditTab />}
+
+        {/* ══ ТАБ: KPI-КАРТОЧКИ ══ */}
+        {activeTab === 'kpi' && <KpiTab />}
       </div>
 
       {/* ══ МОДАЛЬНОЕ ОКНО: БЕЗ TELEGRAM ══ */}
@@ -655,7 +659,7 @@ export default function AdminPage() {
                             {e.dismissed_at || '—'}
                           </td>
                           <td style={TD}>
-                            <span className="badge badge-danger">Уволен</span>
+                            <span className="badge badge-fail">Уволен</span>
                           </td>
                         </tr>
                       ))}
@@ -956,6 +960,361 @@ function AuditTab() {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// KPI-КАРТОЧКИ TAB
+// ════════════════════════════════════════════════════════════════════
+
+const TYPE_LABELS: Record<string, string> = {
+  binary_auto: 'Авто',
+  binary_manual: 'Ручной',
+  threshold: 'Порог',
+  multi_threshold: 'Мульти-порог',
+  quarterly_threshold: 'Квартальный',
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  binary_auto: 'var(--accent)',
+  binary_manual: 'var(--warn)',
+  threshold: 'var(--accent3)',
+  multi_threshold: '#b4a0ff',
+  quarterly_threshold: '#ff8c00',
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  draft: 'badge badge-warn',
+  active: 'badge badge-success',
+  archived: 'badge badge-dim',
+}
+
+function KpiTab() {
+  const [indicators, setIndicators] = React.useState<any[]>([])
+  const [cards, setCards] = React.useState<any[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [filterType, setFilterType] = React.useState('')
+  const [filterStatus, setFilterStatus] = React.useState('')
+  const [search, setSearch] = React.useState('')
+  const [selectedIndicator, setSelectedIndicator] = React.useState<any>(null)
+  const [selectedPosId, setSelectedPosId] = React.useState('')
+  const [card, setCard] = React.useState<any>(null)
+  const [cardLoading, setCardLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    const token = localStorage.getItem('token')
+    Promise.all([
+      fetch('/api/kpi/indicators?status=all', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch('/api/kpi/cards?status=active', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+    ]).then(([inds, cds]) => {
+      setIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
+      setCards(Array.isArray(cds) ? cds : (cds.items ?? []))
+    }).finally(() => setLoading(false))
+  }, [])
+
+  React.useEffect(() => {
+    if (!selectedPosId) { setCard(null); return }
+    setCardLoading(true)
+    const token = localStorage.getItem('token')
+    fetch(`/api/kpi/cards/${selectedPosId}/active`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setCard(data))
+      .finally(() => setCardLoading(false))
+  }, [selectedPosId])
+
+  const filtered = indicators.filter(ind => {
+    if (filterType && ind.formula_type !== filterType) return false
+    if (filterStatus && ind.status !== filterStatus) return false
+    if (search && !ind.name.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  const totalWeight = card?.total_weight ?? card?.indicators?.reduce((s: number, ci: any) => s + (ci.weight || 0), 0) ?? 0
+
+  const SEL = {
+    background: 'rgba(0,229,255,0.07)',
+    border: '1px solid rgba(0,229,255,0.25)',
+    borderRadius: 8,
+    color: 'var(--text)',
+    padding: '8px 12px',
+    fontFamily: 'Exo 2, sans-serif',
+    fontSize: 14,
+    cursor: 'pointer',
+  }
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: 64 }}>
+      <div className="loader-ring" style={{ margin: '0 auto' }} />
+      <p className="loader-text" style={{ marginTop: 20 }}>ЗАГРУЗКА...</p>
+    </div>
+  )
+
+  return (
+    <div className="fade-up">
+
+      {/* ── СЕКЦИЯ 1: БИБЛИОТЕКА ПОКАЗАТЕЛЕЙ ── */}
+      <div className="section-title-main" style={{ marginBottom: 16 }}>
+        Библиотека показателей
+        <span style={{ marginLeft: 12, fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace' }}>
+          {filtered.length} / {indicators.length}
+        </span>
+      </div>
+
+      {/* Фильтры */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <select style={SEL} value={filterType} onChange={e => setFilterType(e.target.value)}>
+          <option value="">Все типы</option>
+          <option value="binary_auto">binary_auto</option>
+          <option value="binary_manual">binary_manual</option>
+          <option value="threshold">threshold</option>
+          <option value="multi_threshold">multi_threshold</option>
+          <option value="quarterly_threshold">quarterly_threshold</option>
+        </select>
+        <select style={SEL} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+          <option value="">Все статусы</option>
+          <option value="draft">draft</option>
+          <option value="active">active</option>
+          <option value="archived">archived</option>
+        </select>
+        <input
+          type="text"
+          placeholder="Поиск по названию..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ ...SEL, flex: 1, minWidth: 200, outline: 'none' }}
+        />
+      </div>
+
+      {/* Таблица показателей */}
+      <div className="cyber-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 40 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={TH}>Название</th>
+              <th style={TH}>Тип</th>
+              <th style={TH}>Общий</th>
+              <th style={TH}>Статус</th>
+              <th style={TH}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>Ничего не найдено</td></tr>
+            ) : filtered.map((ind: any) => (
+              <tr key={ind.id}
+                style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <td style={{ ...TD, fontWeight: 600, maxWidth: 400 }}>{ind.name}</td>
+                <td style={TD}>
+                  <span style={{
+                    background: `${TYPE_COLORS[ind.formula_type] || '#888'}22`,
+                    color: TYPE_COLORS[ind.formula_type] || '#888',
+                    border: `1px solid ${TYPE_COLORS[ind.formula_type] || '#888'}55`,
+                    borderRadius: 6, padding: '2px 10px', fontSize: 11, fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap',
+                  }}>
+                    {TYPE_LABELS[ind.formula_type] || ind.formula_type}
+                  </span>
+                </td>
+                <td style={TD}>
+                  {ind.is_common && <span className="badge badge-success">Общий</span>}
+                </td>
+                <td style={TD}>
+                  <span className={STATUS_BADGE[ind.status] || 'badge badge-dim'}>{ind.status}</span>
+                </td>
+                <td style={TD}>
+                  <button
+                    className="cyber-btn"
+                    style={{ padding: '4px 14px', fontSize: 12 }}
+                    onClick={() => setSelectedIndicator(ind)}
+                  >
+                    Просмотр
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── СЕКЦИЯ 2: КАРТОЧКА ДОЛЖНОСТИ ── */}
+      <div className="section-title-main" style={{ marginBottom: 16 }}>Карточка должности</div>
+
+      <select
+        style={{ ...SEL, minWidth: 300, marginBottom: 24 }}
+        value={selectedPosId}
+        onChange={e => setSelectedPosId(e.target.value)}
+      >
+        <option value="">— Выберите должность —</option>
+        {cards.map((c: any) => (
+          <option key={c.pos_id} value={c.pos_id}>{c.role_name || `pos_id=${c.pos_id}`}</option>
+        ))}
+      </select>
+
+      {cardLoading && (
+        <div style={{ textAlign: 'center', padding: 32 }}>
+          <div className="loader-ring" style={{ margin: '0 auto' }} />
+        </div>
+      )}
+
+      {!cardLoading && card && (
+        <div className="cyber-card fade-up" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)' }}>
+            <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>
+              {card.role_name}
+            </span>
+            <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
+              pos_id={card.pos_id} · v{card.version} · {card.status}
+            </span>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={TH}>Показатель</th>
+                <th style={TH}>Тип</th>
+                <th style={TH}>Общий</th>
+                <th style={{ ...TH, textAlign: 'right' }}>Вес</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(card.indicators || []).map((ci: any, idx: number) => (
+                <tr key={ci.indicator_id ?? idx}
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td style={{ ...TD, fontWeight: 600 }}>{ci.indicator_name || '—'}</td>
+                  <td style={TD}>
+                    {ci.indicator_formula_type && (
+                      <span style={{
+                        background: `${TYPE_COLORS[ci.indicator_formula_type] || '#888'}22`,
+                        color: TYPE_COLORS[ci.indicator_formula_type] || '#888',
+                        border: `1px solid ${TYPE_COLORS[ci.indicator_formula_type] || '#888'}55`,
+                        borderRadius: 6, padding: '2px 8px', fontSize: 11, fontFamily: 'Orbitron, monospace',
+                      }}>
+                        {TYPE_LABELS[ci.indicator_formula_type] || ci.indicator_formula_type}
+                      </span>
+                    )}
+                  </td>
+                  <td style={TD}>
+                    {ci.is_common && <span className="badge badge-success">Общий</span>}
+                  </td>
+                  <td style={{ ...TD, textAlign: 'right', fontFamily: 'Orbitron, monospace', fontSize: 15, fontWeight: 700, color: 'var(--accent3)' }}>
+                    {ci.weight}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* Итог весов */}
+          <div style={{
+            padding: '12px 20px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12,
+          }}>
+            <span style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text-dim)' }}>
+              Сумма весов:
+            </span>
+            <span style={{
+              fontFamily: 'Orbitron, monospace',
+              fontSize: 18,
+              fontWeight: 700,
+              color: totalWeight === 100 ? 'var(--accent3)' : 'var(--danger)',
+              textShadow: totalWeight === 100 ? '0 0 10px var(--accent3)' : '0 0 10px var(--danger)',
+            }}>
+              {totalWeight}%
+            </span>
+            {totalWeight === 100
+              ? <span className="badge badge-success">✓ Верно</span>
+              : <span className="badge badge-fail">≠ 100%</span>
+            }
+          </div>
+        </div>
+      )}
+
+      {!cardLoading && selectedPosId && !card && (
+        <div className="cyber-card" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>
+          Карточка не найдена
+        </div>
+      )}
+
+      {/* ── МОДАЛЬНОЕ ОКНО ПОКАЗАТЕЛЯ ── */}
+      {selectedIndicator && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setSelectedIndicator(null)}
+        >
+          <div
+            className="cyber-card fade-up"
+            style={{ maxWidth: 640, width: '100%', maxHeight: '80vh', overflowY: 'auto', padding: 28, position: 'relative' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setSelectedIndicator(null)}
+              style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}
+            >✕</button>
+
+            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)', marginBottom: 8 }}>
+              ПОКАЗАТЕЛЬ
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 17, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, paddingRight: 32 }}>
+              {selectedIndicator.name}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+              <span style={{
+                background: `${TYPE_COLORS[selectedIndicator.formula_type] || '#888'}22`,
+                color: TYPE_COLORS[selectedIndicator.formula_type] || '#888',
+                border: `1px solid ${TYPE_COLORS[selectedIndicator.formula_type] || '#888'}55`,
+                borderRadius: 6, padding: '3px 12px', fontSize: 12, fontFamily: 'Orbitron, monospace',
+              }}>
+                {selectedIndicator.formula_type}
+              </span>
+              <span className={STATUS_BADGE[selectedIndicator.status] || 'badge badge-dim'}>{selectedIndicator.status}</span>
+              {selectedIndicator.is_common && <span className="badge badge-success">Общий</span>}
+            </div>
+
+            {selectedIndicator.criteria?.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>КРИТЕРИЙ ОЦЕНКИ</div>
+                {selectedIndicator.criteria.map((cr: any, i: number) => (
+                  <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
+                    <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: cr.thresholds?.length ? 10 : 0 }}>
+                      {cr.criterion}
+                    </div>
+                    {cr.numerator_label && (
+                      <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>
+                        Числитель: {cr.numerator_label}
+                        {cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}
+                      </div>
+                    )}
+                    {cr.thresholds?.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>
+                        {cr.thresholds.map((t: any, ti: number) => (
+                          <div key={ti} style={{ fontSize: 12, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 3 }}>
+                            {t.op}{t.value}% → {t.score} баллов
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedIndicator.used_in_cards_count !== undefined && (
+              <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                Используется в{' '}
+                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{selectedIndicator.used_in_cards_count}</span>
+                {' '}карточках
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
