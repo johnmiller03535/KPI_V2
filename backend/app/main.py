@@ -13,6 +13,7 @@ from app.api.reports import router as reports_router
 from app.api.notifications import router as notifications_router
 from app.api.admin import router as admin_router
 from app.api.finance import router as finance_router
+from app.api.kpi_constructor import router as kpi_constructor_router
 from app.scheduler import start_scheduler, stop_scheduler
 from app.bot.runner import start_bot, stop_bot
 
@@ -42,6 +43,7 @@ app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(admin_router)
 app.include_router(finance_router)
+app.include_router(kpi_constructor_router)
 
 @app.on_event("startup")
 async def startup():
