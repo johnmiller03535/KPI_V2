@@ -25,6 +25,33 @@ logger = logging.getLogger(__name__)
 
 KPI_MAPPING_PATH = os.environ.get("KPI_MAPPING_PATH", "/app/reference/KPI_Mapping.xlsx")
 
+INDICATOR_GROUPS = {
+    "Общие показатели": None,
+    "Проектная деятельность": ["проект", "трансформац", "цифров"],
+    "Аналитическая деятельность": ["аналитич", "анализ", "мониторинг", "отчёт", "отчет"],
+    "Закупочная деятельность": ["закуп", "торг", "контракт", "поставщ"],
+    "Правовое обеспечение": ["правов", "юридич", "закон", "норматив"],
+    "Документооборот": ["документ", "обращени", "МСЭД", "ЗК МСЭД"],
+    "Информационные технологии": ["информацион", "техническ", "систем", "IT", "ИТ", "ЕАСУЗ"],
+    "Организационное обеспечение": ["организацион", "бюджет", "финанс", "учёт"],
+    "Прочие показатели": [],
+}
+
+
+def _classify_indicator(name: str, is_common: bool) -> str:
+    if is_common:
+        return "Общие показатели"
+    name_lower = name.lower()
+    for group, keywords in INDICATOR_GROUPS.items():
+        if keywords is None:
+            continue
+        if not keywords:
+            continue
+        for kw in keywords:
+            if kw.lower() in name_lower:
+                return group
+    return "Прочие показатели"
+
 # Маппинг is_common критерий → стандартные тексты
 _COMMON_FRAGMENTS = {
     "исполнительской дисциплин": None,
@@ -94,6 +121,7 @@ class KpiImportService:
                 "pos_id": int(row[0]) if row[0] else 0,
                 "role_id": role_id,
                 "role_name": str(row[4]) if row[4] else "",
+                "unit": str(row[3]) if row[3] else "",
             }
 
         # Читаем индикаторы
@@ -156,14 +184,16 @@ class KpiImportService:
             # --- Indicator ---
             if is_common:
                 ind_key = f"common::{criterion_text.strip()}"
+                ind_name_stored = criterion_text.strip()
             else:
                 ind_key = f"{ind_name}::{formula_type}"
+                ind_name_stored = ind_name
 
             if ind_key not in indicators:
                 ind_id = str(uuid.uuid4())
                 indicators[ind_key] = {
                     "id": ind_id,
-                    "name": ind_name,
+                    "name": ind_name_stored,
                     "formula_type": formula_type,
                     "is_common": is_common,
                     "is_editable_per_role": not is_common,
@@ -174,6 +204,7 @@ class KpiImportService:
                     "created_by": "import",
                     "created_at": datetime.now(timezone.utc),
                     "updated_at": datetime.now(timezone.utc),
+                    "indicator_group": _classify_indicator(ind_name_stored, is_common),
                 }
                 indicator_key_to_id[ind_key] = ind_id
 
@@ -230,6 +261,7 @@ class KpiImportService:
                     "pos_id": pos_id,
                     "role_id": role_id,
                     "role_name": role_info.get("role_name", ""),
+                    "unit": role_info.get("unit", ""),
                     "version": 1,
                     "status": "active",
                     "valid_from": today,

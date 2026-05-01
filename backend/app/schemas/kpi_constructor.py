@@ -14,6 +14,7 @@ class IndicatorCreate(BaseModel):
     formula_type: str                           # binary_auto | binary_manual | threshold | multi_threshold | quarterly_threshold
     is_common: bool = False
     is_editable_per_role: bool = True
+    indicator_group: Optional[str] = None
     # Критерий (создаётся вместе с показателем)
     criterion: str
     numerator_label: Optional[str] = None
@@ -32,6 +33,7 @@ class IndicatorUpdate(BaseModel):
     name: Optional[str] = None
     is_editable_per_role: Optional[bool] = None
     is_common: Optional[bool] = None            # только hr, admin
+    indicator_group: Optional[str] = None
     # Обновление критерия
     criterion: Optional[str] = None
     numerator_label: Optional[str] = None
@@ -71,6 +73,7 @@ class IndicatorResponse(BaseModel):
     formula_type: str
     is_common: bool
     is_editable_per_role: bool
+    indicator_group: Optional[str] = None
     status: str
     version: int
     valid_from: Optional[date]
@@ -128,6 +131,7 @@ class CardIndicatorResponse(BaseModel):
     indicator_formula_type: Optional[str] = None
     criterion_text: Optional[str] = None
     is_common: Optional[bool] = None
+    indicator_group: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -138,6 +142,7 @@ class CardResponse(BaseModel):
     pos_id: int
     role_id: str
     role_name: Optional[str]
+    unit: Optional[str] = None
     version: int
     status: str
     valid_from: Optional[date]

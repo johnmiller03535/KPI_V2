@@ -19,6 +19,7 @@ class KpiIndicator(Base):
     formula_type = Column(String, nullable=False)               # binary_auto | binary_manual | threshold | ...
     is_common = Column(Boolean, default=False, nullable=False)
     is_editable_per_role = Column(Boolean, default=True, nullable=False)
+    indicator_group = Column(String, nullable=True)  # Classification group
     status = Column(String, default="draft", nullable=False)    # draft | active | archived
     version = Column(Integer, default=1, nullable=False)
     valid_from = Column(Date, nullable=True)
@@ -55,6 +56,7 @@ class KpiRoleCard(Base):
     pos_id = Column(Integer, nullable=False, index=True)
     role_id = Column(String, nullable=False, index=True)
     role_name = Column(Text, nullable=True)
+    unit = Column(String, nullable=True)  # Подразделение/unit
     version = Column(Integer, default=1, nullable=False)
     status = Column(String, default="draft", nullable=False)    # draft | active | archived
     valid_from = Column(Date, nullable=True)

@@ -68,6 +68,7 @@ async def _build_indicator_response(db: AsyncSession, ind: KpiIndicator) -> Indi
         formula_type=ind.formula_type,
         is_common=ind.is_common,
         is_editable_per_role=ind.is_editable_per_role,
+        indicator_group=ind.indicator_group,
         status=ind.status,
         version=ind.version,
         valid_from=ind.valid_from,
@@ -115,6 +116,7 @@ async def _build_card_response(db: AsyncSession, card: KpiRoleCard) -> CardRespo
             indicator_formula_type=ind.formula_type if ind else None,
             criterion_text=ci.override_criterion or crit_text,
             is_common=ind.is_common if ind else None,
+            indicator_group=ind.indicator_group if ind else None,
         ))
         total_weight += ci.override_weight or ci.weight
 
@@ -123,6 +125,7 @@ async def _build_card_response(db: AsyncSession, card: KpiRoleCard) -> CardRespo
         pos_id=card.pos_id,
         role_id=card.role_id,
         role_name=card.role_name,
+        unit=card.unit,
         version=card.version,
         status=card.status,
         valid_from=card.valid_from,
@@ -222,10 +225,12 @@ async def update_indicator(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Редактировать показатель (только draft). is_common — только admin."""
+    """Редактировать показатель. Структурные поля (name, is_common) — только draft. is_common — только admin."""
     ind = await _get_indicator_or_404(db, indicator_id)
-    if ind.status != "draft":
-        raise HTTPException(status_code=400, detail="Редактировать можно только черновик")
+    # Разрешаем редактирование indicator_group и критериев для active-показателей
+    struct_only = body.code is not None or body.name is not None or body.is_editable_per_role is not None or body.is_common is not None
+    if struct_only and ind.status != "draft":
+        raise HTTPException(status_code=400, detail="Структурные поля можно менять только у черновика")
 
     if body.is_common is not None and current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Изменять is_common может только admin")
@@ -238,6 +243,8 @@ async def update_indicator(
         ind.is_editable_per_role = body.is_editable_per_role
     if body.is_common is not None:
         ind.is_common = body.is_common
+    if body.indicator_group is not None:
+        ind.indicator_group = body.indicator_group
 
     # Обновить первый критерий если переданы поля
     crit_fields = {
@@ -679,6 +686,7 @@ async def import_from_xlsx(
             formula_type=ind_data["formula_type"],
             is_common=ind_data["is_common"],
             is_editable_per_role=ind_data["is_editable_per_role"],
+            indicator_group=ind_data.get("indicator_group"),
             status=ind_data["status"],
             version=ind_data["version"],
             valid_from=ind_data["valid_from"],
@@ -735,6 +743,7 @@ async def import_from_xlsx(
             pos_id=card_data["pos_id"],
             role_id=card_data["role_id"],
             role_name=card_data["role_name"],
+            unit=card_data.get("unit"),
             version=card_data["version"],
             status=card_data["status"],
             valid_from=card_data["valid_from"],

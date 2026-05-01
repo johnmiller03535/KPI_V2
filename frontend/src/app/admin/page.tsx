@@ -108,7 +108,7 @@ export default function AdminPage() {
   const [syncing, setSyncing] = useState(false)
   const [reminding, setReminding] = useState(false)
   const [actionResult, setActionResult] = useState<{ ok: boolean; text: string } | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'subordination' | 'audit' | 'kpi'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'periods' | 'employees' | 'subordination' | 'audit' | 'kpi_indicators' | 'kpi'>('overview')
   const [showDismissedModal, setShowDismissedModal] = useState(false)
   const [dismissedEmployees, setDismissedEmployees] = useState<DismissedEmployee[]>([])
   const [loadingDismissed, setLoadingDismissed] = useState(false)
@@ -201,6 +201,7 @@ export default function AdminPage() {
     { id: 'employees',      label: 'Сотрудники' },
     { id: 'subordination',  label: 'Подчинённость' },
     { id: 'audit',          label: 'Аудит' },
+    { id: 'kpi_indicators', label: 'KPI-показатели' },
     { id: 'kpi',            label: 'KPI-карточки' },
   ] as const
 
@@ -531,6 +532,9 @@ export default function AdminPage() {
 
         {/* ══ ТАБ: АУДИТ ══ */}
         {activeTab === 'audit' && <AuditTab />}
+
+        {/* ══ ТАБ: KPI-ПОКАЗАТЕЛИ ══ */}
+        {activeTab === 'kpi_indicators' && <KpiIndicatorsTab />}
 
         {/* ══ ТАБ: KPI-КАРТОЧКИ ══ */}
         {activeTab === 'kpi' && <KpiTab />}
@@ -991,44 +995,49 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 function KpiTab() {
-  const [indicators, setIndicators] = useState<any[]>([])
   const [cards, setCards] = useState<any[]>([])
+  const [allIndicators, setAllIndicators] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filterType, setFilterType] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [search, setSearch] = useState('')
-  const [selectedIndicator, setSelectedIndicator] = useState<any>(null)
   const [selectedPosId, setSelectedPosId] = useState('')
   const [card, setCard] = useState<any>(null)
   const [cardLoading, setCardLoading] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [editedIndicators, setEditedIndicators] = useState<any[]>([])
+  const [savingCard, setSavingCard] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [addSearch, setAddSearch] = useState('')
+  const [addSelected, setAddSelected] = useState<any>(null)
+  const [addWeight, setAddWeight] = useState('')
+  const [addingSaving, setAddingSaving] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
-      api.get('/kpi/indicators?status=all').then(r => r.data),
       api.get('/kpi/cards?status=active').then(r => r.data),
-    ]).then(([inds, cds]) => {
-      setIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
+      api.get('/kpi/indicators?status=active').then(r => r.data),
+    ]).then(([cds, inds]) => {
       setCards(Array.isArray(cds) ? cds : (cds.items ?? []))
+      setAllIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
     }).finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
-    if (!selectedPosId) { setCard(null); return }
+    if (!selectedPosId) { setCard(null); setEditMode(false); return }
     setCardLoading(true)
     api.get(`/kpi/cards/${selectedPosId}/active`)
-      .then(r => setCard(r.data))
+      .then(r => { setCard(r.data); setEditedIndicators([...(r.data.indicators || [])]) })
       .catch(() => setCard(null))
       .finally(() => setCardLoading(false))
   }, [selectedPosId])
 
-  const filtered = indicators.filter(ind => {
-    if (filterType && ind.formula_type !== filterType) return false
-    if (filterStatus && ind.status !== filterStatus) return false
-    if (search && !ind.name.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
+  const editedWeight = editedIndicators.reduce((s, ci) => s + (ci.override_weight ?? ci.weight ?? 0), 0)
 
-  const totalWeight = card?.total_weight ?? card?.indicators?.reduce((s: number, ci: any) => s + (ci.weight || 0), 0) ?? 0
+  const cardsByUnit = cards.reduce((acc: any, c: any) => {
+    const u = c.unit || 'Прочие'
+    if (!acc[u]) acc[u] = []
+    acc[u].push(c)
+    return acc
+  }, {})
 
   const SEL = {
     background: 'rgba(0,229,255,0.07)',
@@ -1041,6 +1050,80 @@ function KpiTab() {
     cursor: 'pointer',
   }
 
+  async function handleSaveCard() {
+    if (!card) return
+    setSavingCard(true)
+    try {
+      for (const ci of editedIndicators) {
+        await api.put(`/kpi/cards/${card.id}/indicators/${ci.indicator_id}`, {
+          weight: ci.weight,
+          order_num: ci.order_num,
+        })
+      }
+      const updated = await api.get(`/kpi/cards/${selectedPosId}/active`)
+      setCard(updated.data)
+      setEditedIndicators([...(updated.data.indicators || [])])
+      setEditMode(false)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка сохранения')
+    } finally { setSavingCard(false) }
+  }
+
+  async function handleAddIndicator() {
+    if (!card || !addSelected || !addWeight) return
+    setAddingSaving(true)
+    try {
+      const nextOrder = Math.max(...editedIndicators.map(ci => ci.order_num ?? 0), 0) + 1
+      await api.post(`/kpi/cards/${card.id}/indicators`, {
+        indicator_id: addSelected.id,
+        weight: parseInt(addWeight),
+        order_num: nextOrder,
+      })
+      const updated = await api.get(`/kpi/cards/${selectedPosId}/active`)
+      setCard(updated.data)
+      setEditedIndicators([...(updated.data.indicators || [])])
+      setShowAddModal(false)
+      setAddSelected(null)
+      setAddWeight('')
+      setAddSearch('')
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка добавления')
+    } finally { setAddingSaving(false) }
+  }
+
+  async function handleRemoveIndicator(indicatorId: string) {
+    if (!card) return
+    try {
+      await api.delete(`/kpi/cards/${card.id}/indicators/${indicatorId}`)
+      const updated = await api.get(`/kpi/cards/${selectedPosId}/active`)
+      setCard(updated.data)
+      setEditedIndicators([...(updated.data.indicators || [])])
+      setDeleteConfirm(null)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка удаления')
+    }
+  }
+
+  function swapOrder(idx: number, dir: -1 | 1) {
+    const arr = [...editedIndicators]
+    const swapIdx = idx + dir
+    if (swapIdx < 0 || swapIdx >= arr.length) return
+    const tmp = arr[idx].order_num
+    arr[idx] = { ...arr[idx], order_num: arr[swapIdx].order_num }
+    arr[swapIdx] = { ...arr[swapIdx], order_num: tmp }
+    const sorted = [...arr].sort((a, b) => a.order_num - b.order_num)
+    setEditedIndicators(sorted)
+  }
+
+  const addFiltered = allIndicators.filter(ind => {
+    const alreadyIn = editedIndicators.some(ci => ci.indicator_id === ind.id)
+    if (alreadyIn) return false
+    if (addSearch && !ind.name.toLowerCase().includes(addSearch.toLowerCase())) return false
+    return true
+  })
+
+  const totalWeight = card?.total_weight ?? (card?.indicators || []).reduce((s: number, ci: any) => s + (ci.weight || 0), 0)
+
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 64 }}>
       <div className="loader-ring" style={{ margin: '0 auto' }} />
@@ -1051,104 +1134,20 @@ function KpiTab() {
   return (
     <>
     <div className="fade-up">
-
-      {/* ── СЕКЦИЯ 1: БИБЛИОТЕКА ПОКАЗАТЕЛЕЙ ── */}
-      <div className="section-title-main" style={{ marginBottom: 16 }}>
-        Библиотека показателей
-        <span style={{ marginLeft: 12, fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace' }}>
-          {filtered.length} / {indicators.length}
-        </span>
-      </div>
-
-      {/* Фильтры */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
-        <select style={SEL} value={filterType} onChange={e => setFilterType(e.target.value)}>
-          <option value="">Все типы</option>
-          <option value="binary_auto">binary_auto</option>
-          <option value="binary_manual">binary_manual</option>
-          <option value="threshold">threshold</option>
-          <option value="multi_threshold">multi_threshold</option>
-          <option value="quarterly_threshold">quarterly_threshold</option>
-        </select>
-        <select style={SEL} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="">Все статусы</option>
-          <option value="draft">draft</option>
-          <option value="active">active</option>
-          <option value="archived">archived</option>
-        </select>
-        <input
-          type="text"
-          placeholder="Поиск по названию..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ ...SEL, flex: 1, minWidth: 200, outline: 'none' }}
-        />
-      </div>
-
-      {/* Таблица показателей */}
-      <div className="cyber-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 40 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={TH}>Название</th>
-              <th style={TH}>Тип</th>
-              <th style={TH}>Общий</th>
-              <th style={TH}>Статус</th>
-              <th style={TH}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} style={{ ...TD, textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>Ничего не найдено</td></tr>
-            ) : filtered.map((ind: any) => (
-              <tr key={ind.id}
-                style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td style={{ ...TD, fontWeight: 600, maxWidth: 400 }}>{ind.name}</td>
-                <td style={TD}>
-                  <span style={{
-                    background: `${TYPE_COLORS[ind.formula_type] || '#888'}22`,
-                    color: TYPE_COLORS[ind.formula_type] || '#888',
-                    border: `1px solid ${TYPE_COLORS[ind.formula_type] || '#888'}55`,
-                    borderRadius: 6, padding: '2px 10px', fontSize: 11, fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap',
-                  }}>
-                    {TYPE_LABELS[ind.formula_type] || ind.formula_type}
-                  </span>
-                </td>
-                <td style={TD}>
-                  {ind.is_common && <span className="badge badge-success">Общий</span>}
-                </td>
-                <td style={TD}>
-                  <span className={STATUS_BADGE[ind.status] || 'badge badge-dim'}>{ind.status}</span>
-                </td>
-                <td style={TD}>
-                  <button
-                    className="cyber-btn"
-                    style={{ padding: '4px 14px', fontSize: 12 }}
-                    onClick={() => setSelectedIndicator(ind)}
-                  >
-                    Просмотр
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── СЕКЦИЯ 2: КАРТОЧКА ДОЛЖНОСТИ ── */}
       <div className="section-title-main" style={{ marginBottom: 16 }}>Карточка должности</div>
 
       <select
         style={{ ...SEL, minWidth: 300, marginBottom: 24 }}
         value={selectedPosId}
-        onChange={e => setSelectedPosId(e.target.value)}
+        onChange={e => { setSelectedPosId(e.target.value); setEditMode(false) }}
       >
         <option value="">— Выберите должность —</option>
-        {cards.map((c: any) => (
-          <option key={c.pos_id} value={c.pos_id}>{c.role_name || `pos_id=${c.pos_id}`}</option>
+        {Object.entries(cardsByUnit).map(([unit, unitCards]: [string, any]) => (
+          <optgroup key={unit} label={unit}>
+            {unitCards.map((c: any) => (
+              <option key={c.pos_id} value={c.pos_id}>{c.role_name || `pos_id=${c.pos_id}`}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
 
@@ -1159,31 +1158,63 @@ function KpiTab() {
       )}
 
       {!cardLoading && card && (
-        <div className="cyber-card fade-up" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)' }}>
-            <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>
-              {card.role_name}
-            </span>
-            <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
-              pos_id={card.pos_id} · v{card.version} · {card.status}
-            </span>
+        <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>
+                {card.role_name}
+              </span>
+              <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
+                pos_id={card.pos_id} · v{card.version} · {card.status}
+                {card.unit && ` · ${card.unit}`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {editMode ? (
+                <>
+                  <button className="action-btn btn-fill" style={{ fontSize: 12 }} onClick={handleSaveCard} disabled={savingCard}>
+                    {savingCard ? '...' : '💾 Сохранить'}
+                  </button>
+                  <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => { setEditMode(false); setEditedIndicators([...(card.indicators || [])]) }}>
+                    ✕ Отмена
+                  </button>
+                  <button className="cyber-btn" style={{ fontSize: 12, padding: '4px 12px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)' }} onClick={() => setShowAddModal(true)}>
+                    + Добавить показатель
+                  </button>
+                </>
+              ) : (
+                <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => setEditMode(true)}>
+                  ✏️ Редактировать
+                </button>
+              )}
+            </div>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
+                {editMode && <th style={{ ...TH, width: 64 }}></th>}
                 <th style={TH}>Показатель</th>
                 <th style={TH}>Тип</th>
                 <th style={TH}>Общий</th>
                 <th style={{ ...TH, textAlign: 'right' }}>Вес</th>
+                {editMode && <th style={{ ...TH, width: 40 }}></th>}
               </tr>
             </thead>
             <tbody>
-              {(card.indicators || []).map((ci: any, idx: number) => (
+              {(editMode ? editedIndicators : (card.indicators || [])).map((ci: any, idx: number) => (
                 <tr key={ci.indicator_id ?? idx}
                   style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
+                  {editMode && (
+                    <td style={{ ...TD, width: 64 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <button onClick={() => swapOrder(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                        <button onClick={() => swapOrder(idx, 1)} disabled={idx === editedIndicators.length - 1} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === editedIndicators.length - 1 ? 0.3 : 1 }}>▼</button>
+                      </div>
+                    </td>
+                  )}
                   <td style={{ ...TD, fontWeight: 600 }}>{ci.indicator_name || '—'}</td>
                   <td style={TD}>
                     {ci.indicator_formula_type && (
@@ -1200,14 +1231,43 @@ function KpiTab() {
                   <td style={TD}>
                     {ci.is_common && <span className="badge badge-success">Общий</span>}
                   </td>
-                  <td style={{ ...TD, textAlign: 'right', fontFamily: 'Orbitron, monospace', fontSize: 15, fontWeight: 700, color: 'var(--accent3)' }}>
-                    {ci.weight}%
+                  <td style={{ ...TD, textAlign: 'right' }}>
+                    {editMode ? (
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={ci.weight}
+                        onChange={e => {
+                          const val = parseInt(e.target.value) || 0
+                          setEditedIndicators(prev => prev.map((x, i) => i === idx ? { ...x, weight: val } : x))
+                        }}
+                        style={{ width: 60, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 14, fontWeight: 700, padding: '4px 8px', textAlign: 'right' }}
+                      />
+                    ) : (
+                      <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 15, fontWeight: 700, color: 'var(--accent3)' }}>
+                        {ci.weight}%
+                      </span>
+                    )}
                   </td>
+                  {editMode && (
+                    <td style={{ ...TD, width: 40 }}>
+                      {!ci.is_common && (
+                        deleteConfirm === ci.indicator_id ? (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={() => handleRemoveIndicator(ci.indicator_id)} style={{ background: 'rgba(255,59,92,0.15)', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer', fontSize: 10, padding: '2px 6px' }}>Да</button>
+                            <button onClick={() => setDeleteConfirm(null)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4, color: 'var(--text-dim)', cursor: 'pointer', fontSize: 10, padding: '2px 6px' }}>Нет</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setDeleteConfirm(ci.indicator_id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16, lineHeight: 1, opacity: 0.7 }}>🗑</button>
+                        )
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
-          {/* Итог весов */}
           <div style={{
             padding: '12px 20px',
             borderTop: '1px solid rgba(255,255,255,0.08)',
@@ -1217,15 +1277,13 @@ function KpiTab() {
               Сумма весов:
             </span>
             <span style={{
-              fontFamily: 'Orbitron, monospace',
-              fontSize: 18,
-              fontWeight: 700,
-              color: totalWeight === 100 ? 'var(--accent3)' : 'var(--danger)',
-              textShadow: totalWeight === 100 ? '0 0 10px var(--accent3)' : '0 0 10px var(--danger)',
+              fontFamily: 'Orbitron, monospace', fontSize: 18, fontWeight: 700,
+              color: (editMode ? editedWeight : totalWeight) === 100 ? 'var(--accent3)' : 'var(--danger)',
+              textShadow: (editMode ? editedWeight : totalWeight) === 100 ? '0 0 10px var(--accent3)' : '0 0 10px var(--danger)',
             }}>
-              {totalWeight}%
+              {editMode ? editedWeight : totalWeight}%
             </span>
-            {totalWeight === 100
+            {(editMode ? editedWeight : totalWeight) === 100
               ? <span className="badge badge-success">✓ Верно</span>
               : <span className="badge badge-fail">≠ 100%</span>
             }
@@ -1238,86 +1296,533 @@ function KpiTab() {
           Карточка не найдена
         </div>
       )}
-
     </div>
 
-      {/* ── МОДАЛЬНОЕ ОКНО ПОКАЗАТЕЛЯ ── */}
-      {/* Вынесено за пределы .fade-up: transform на .fade-up создаёт
-          новый containing block и ломает position:fixed внутри него */}
-      {selectedIndicator && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-          onClick={() => setSelectedIndicator(null)}
+    {/* ── МОДАЛЬНОЕ ОКНО: ДОБАВИТЬ ПОКАЗАТЕЛЬ ── */}
+    {showAddModal && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        onClick={e => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight('') } }}
+      >
+        <div className="cyber-card" style={{ maxWidth: 560, width: '100%', maxHeight: '75vh', display: 'flex', flexDirection: 'column', gap: 0, padding: 0 }}
+          onClick={e => e.stopPropagation()}
         >
-          <div
-            className="cyber-card"
-            style={{ maxWidth: 640, width: '100%', maxHeight: '80vh', overflowY: 'auto', padding: 28, position: 'relative' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setSelectedIndicator(null)}
-              style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}
-            >✕</button>
-
-            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)', marginBottom: 8 }}>
-              ПОКАЗАТЕЛЬ
-            </div>
-            <div style={{ fontWeight: 700, fontSize: 17, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, paddingRight: 32 }}>
-              {selectedIndicator.name}
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-              <span style={{
-                background: `${TYPE_COLORS[selectedIndicator.formula_type] || '#888'}22`,
-                color: TYPE_COLORS[selectedIndicator.formula_type] || '#888',
-                border: `1px solid ${TYPE_COLORS[selectedIndicator.formula_type] || '#888'}55`,
-                borderRadius: 6, padding: '3px 12px', fontSize: 12, fontFamily: 'Orbitron, monospace',
-              }}>
-                {selectedIndicator.formula_type}
-              </span>
-              <span className={STATUS_BADGE[selectedIndicator.status] || 'badge badge-dim'}>{selectedIndicator.status}</span>
-              {selectedIndicator.is_common && <span className="badge badge-success">Общий</span>}
-            </div>
-
-            {selectedIndicator.criteria?.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>КРИТЕРИЙ ОЦЕНКИ</div>
-                {selectedIndicator.criteria.map((cr: any, i: number) => (
-                  <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
-                    <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: cr.thresholds?.length ? 10 : 0 }}>
-                      {cr.criterion}
-                    </div>
-                    {cr.numerator_label && (
-                      <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>
-                        Числитель: {cr.numerator_label}
-                        {cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}
-                      </div>
-                    )}
-                    {cr.thresholds?.length > 0 && (
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>
-                        {cr.thresholds.map((t: any, ti: number) => (
-                          <div key={ti} style={{ fontSize: 12, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 3 }}>
-                            {t.op}{t.value}% → {t.score} баллов
-                          </div>
-                        ))}
-                      </div>
-                    )}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>ДОБАВИТЬ ПОКАЗАТЕЛЬ</div>
+            <button onClick={() => { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight('') }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+          <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
+            <input
+              type="text"
+              placeholder="Поиск показателя..."
+              value={addSearch}
+              onChange={e => setAddSearch(e.target.value)}
+              style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none' }}
+            />
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: 300, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {addFiltered.map(ind => (
+                <div
+                  key={ind.id}
+                  onClick={() => setAddSelected(ind)}
+                  style={{
+                    padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+                    background: addSelected?.id === ind.id ? 'rgba(0,229,255,0.1)' : 'rgba(255,255,255,0.03)',
+                    border: addSelected?.id === ind.id ? '1px solid rgba(0,229,255,0.4)' : '1px solid transparent',
+                    fontFamily: 'Exo 2, sans-serif', fontSize: 13,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 2 }}>{ind.name}</div>
+                  <div style={{ fontSize: 11, color: TYPE_COLORS[ind.formula_type] || '#888', fontFamily: 'Orbitron, monospace' }}>
+                    {TYPE_LABELS[ind.formula_type] || ind.formula_type}
+                    {ind.is_common && ' · Общий'}
                   </div>
-                ))}
-              </div>
-            )}
-
-            {selectedIndicator.used_in_cards_count !== undefined && (
-              <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
-                Используется в{' '}
-                <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{selectedIndicator.used_in_cards_count}</span>
-                {' '}карточках
+                </div>
+              ))}
+              {addFiltered.length === 0 && (
+                <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 24, fontSize: 13 }}>Нет доступных показателей</div>
+              )}
+            </div>
+            {addSelected && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <label style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', whiteSpace: 'nowrap' }}>Вес (%)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={addWeight}
+                  onChange={e => setAddWeight(e.target.value)}
+                  placeholder="0"
+                  style={{ width: 80, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 8, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 15, padding: '6px 10px', outline: 'none' }}
+                />
+                <button
+                  className="action-btn btn-fill"
+                  style={{ fontSize: 12, flex: 1 }}
+                  onClick={handleAddIndicator}
+                  disabled={addingSaving || !addWeight}
+                >
+                  {addingSaving ? '...' : '+ Добавить'}
+                </button>
               </div>
             )}
           </div>
         </div>
-      )}
+      </div>
+    )}
+    </>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// KPI-ПОКАЗАТЕЛИ TAB
+// ════════════════════════════════════════════════════════════════════
+
+const INDICATOR_GROUPS_LIST = [
+  { id: 'all', label: 'Все' },
+  { id: 'Общие показатели', label: 'Общие показатели' },
+  { id: 'Проектная деятельность', label: 'Проектная деятельность' },
+  { id: 'Аналитическая деятельность', label: 'Аналитическая деятельность' },
+  { id: 'Закупочная деятельность', label: 'Закупочная деятельность' },
+  { id: 'Правовое обеспечение', label: 'Правовое обеспечение' },
+  { id: 'Документооборот', label: 'Документооборот' },
+  { id: 'Информационные технологии', label: 'Информационные технологии' },
+  { id: 'Организационное обеспечение', label: 'Организационное обеспечение' },
+  { id: 'Прочие показатели', label: 'Прочие показатели' },
+]
+
+function KpiIndicatorsTab() {
+  const [indicators, setIndicators] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeGroup, setActiveGroup] = useState('all')
+  const [search, setSearch] = useState('')
+  const [editingIndicator, setEditingIndicator] = useState<any>(null)
+  const [editForm, setEditForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/kpi/indicators?status=all')
+      .then(r => setIndicators(Array.isArray(r.data) ? r.data : (r.data.items ?? [])))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const groupCounts: Record<string, number> = { all: indicators.length }
+  for (const g of INDICATOR_GROUPS_LIST.slice(1)) {
+    groupCounts[g.id] = indicators.filter(ind => (ind.indicator_group || 'Прочие показатели') === g.id).length
+  }
+
+  const filtered = indicators.filter(ind => {
+    if (activeGroup !== 'all' && (ind.indicator_group || 'Прочие показатели') !== activeGroup) return false
+    if (search && !ind.name.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  function openEdit(ind: any) {
+    const cr = ind.criteria?.[0] || {}
+    setEditForm({
+      name: ind.name,
+      indicator_group: ind.indicator_group || 'Прочие показатели',
+      criterion: cr.criterion || '',
+      numerator_label: cr.numerator_label || '',
+      denominator_label: cr.denominator_label || '',
+      cumulative: cr.cumulative || false,
+      thresholds: cr.thresholds ? JSON.stringify(cr.thresholds, null, 2) : '',
+      quarterly_thresholds: cr.quarterly_thresholds ? JSON.stringify(cr.quarterly_thresholds, null, 2) : '',
+      common_text_positive: cr.common_text_positive || '',
+      common_text_negative: cr.common_text_negative || '',
+    })
+    setEditingIndicator(ind)
+  }
+
+  async function handleSave() {
+    if (!editingIndicator) return
+    setSaving(true)
+    try {
+      let thresholds = undefined
+      if (editForm.thresholds) {
+        try { thresholds = JSON.parse(editForm.thresholds) } catch { thresholds = undefined }
+      }
+      let quarterly_thresholds = undefined
+      if (editForm.quarterly_thresholds) {
+        try { quarterly_thresholds = JSON.parse(editForm.quarterly_thresholds) } catch { quarterly_thresholds = undefined }
+      }
+      const payload: any = {
+        indicator_group: editForm.indicator_group,
+        criterion: editForm.criterion || undefined,
+        numerator_label: editForm.numerator_label || undefined,
+        denominator_label: editForm.denominator_label || undefined,
+        cumulative: editForm.cumulative,
+        common_text_positive: editForm.common_text_positive || undefined,
+        common_text_negative: editForm.common_text_negative || undefined,
+      }
+      if (thresholds) payload.thresholds = thresholds
+      if (quarterly_thresholds) payload.quarterly_thresholds = quarterly_thresholds
+      // Only include name if indicator is draft
+      if (editingIndicator.status === 'draft') {
+        payload.name = editForm.name
+      }
+      const res = await api.put(`/kpi/indicators/${editingIndicator.id}`, payload)
+      setIndicators(prev => prev.map(ind => ind.id === editingIndicator.id ? res.data : ind))
+      setEditingIndicator(null)
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка сохранения')
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return (
+    <div style={{ textAlign: 'center', padding: 64 }}>
+      <div className="loader-ring" style={{ margin: '0 auto' }} />
+      <p className="loader-text" style={{ marginTop: 20 }}>ЗАГРУЗКА...</p>
+    </div>
+  )
+
+  const isNumericType = ['threshold', 'multi_threshold', 'quarterly_threshold'].includes(editingIndicator?.formula_type)
+  const isBinaryType = ['binary_auto', 'binary_manual'].includes(editingIndicator?.formula_type)
+
+  return (
+    <>
+    <div className="fade-up">
+      <div style={{ display: 'flex', gap: 0, minHeight: 600 }}>
+        {/* Сайдбар групп */}
+        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', paddingRight: 0 }}>
+          {INDICATOR_GROUPS_LIST.map(g => (
+            <div
+              key={g.id}
+              onClick={() => setActiveGroup(g.id)}
+              style={{
+                padding: '10px 16px',
+                cursor: 'pointer',
+                borderLeft: activeGroup === g.id ? '3px solid var(--accent)' : '3px solid transparent',
+                background: activeGroup === g.id ? 'rgba(0,229,255,0.06)' : 'transparent',
+                color: activeGroup === g.id ? 'var(--accent)' : 'rgba(232,234,246,0.65)',
+                fontFamily: 'Exo 2, sans-serif',
+                fontSize: 12,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                transition: 'all 0.15s',
+                borderRadius: '0 6px 6px 0',
+              }}
+            >
+              <span>{g.label}</span>
+              <span style={{
+                background: activeGroup === g.id ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)',
+                color: activeGroup === g.id ? 'var(--accent)' : 'var(--text-dim)',
+                borderRadius: 10, padding: '1px 7px', fontSize: 10,
+                fontFamily: 'Orbitron, monospace',
+              }}>
+                {groupCounts[g.id] ?? 0}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Основная область */}
+        <div style={{ flex: 1, paddingLeft: 20 }}>
+          <input
+            type="text"
+            placeholder="Поиск по названию..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width: '100%', marginBottom: 16,
+              background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)',
+              borderRadius: 8, color: 'var(--text)', padding: '8px 14px',
+              fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+
+          <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={TH}>Название</th>
+                  <th style={TH}>Тип</th>
+                  <th style={{ ...TH, textAlign: 'center' }}>Используется</th>
+                  <th style={TH}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ ...TD, textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>
+                      Ничего не найдено
+                    </td>
+                  </tr>
+                ) : filtered.map((ind: any) => (
+                  <tr key={ind.id}
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td style={{ ...TD, fontWeight: 600, maxWidth: 380 }}>
+                      <div>{ind.name}</div>
+                      {ind.is_common && <span style={{ fontSize: 10, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace' }}>ОБЩИЙ</span>}
+                    </td>
+                    <td style={TD}>
+                      <span style={{
+                        background: `${TYPE_COLORS[ind.formula_type] || '#888'}22`,
+                        color: TYPE_COLORS[ind.formula_type] || '#888',
+                        border: `1px solid ${TYPE_COLORS[ind.formula_type] || '#888'}55`,
+                        borderRadius: 6, padding: '2px 10px', fontSize: 11, fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap',
+                      }}>
+                        {TYPE_LABELS[ind.formula_type] || ind.formula_type}
+                      </span>
+                    </td>
+                    <td style={{ ...TD, textAlign: 'center', fontFamily: 'Orbitron, monospace', fontSize: 13, color: ind.used_in_cards_count > 0 ? 'var(--accent3)' : 'var(--text-dim)' }}>
+                      {ind.used_in_cards_count ?? 0}
+                    </td>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>
+                      <button
+                        className="action-btn btn-view"
+                        style={{ fontSize: 11, padding: '4px 10px', marginRight: 6 }}
+                        onClick={() => setEditingIndicator({ ...ind, _viewOnly: true })}
+                      >
+                        Просмотр
+                      </button>
+                      <button
+                        className="action-btn btn-fill"
+                        style={{ fontSize: 11, padding: '4px 10px' }}
+                        onClick={() => openEdit(ind)}
+                      >
+                        Редактировать
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* ── МОДАЛЬНОЕ ОКНО: ПРОСМОТР (viewOnly) ── */}
+    {editingIndicator?._viewOnly && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        onClick={() => setEditingIndicator(null)}
+      >
+        <div
+          className="cyber-card"
+          style={{ maxWidth: 640, width: '100%', maxHeight: '80vh', overflowY: 'auto', padding: 28, position: 'relative' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button onClick={() => setEditingIndicator(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)', marginBottom: 8 }}>ПОКАЗАТЕЛЬ</div>
+          <div style={{ fontWeight: 700, fontSize: 17, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, paddingRight: 32 }}>{editingIndicator.name}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+            <span style={{
+              background: `${TYPE_COLORS[editingIndicator.formula_type] || '#888'}22`,
+              color: TYPE_COLORS[editingIndicator.formula_type] || '#888',
+              border: `1px solid ${TYPE_COLORS[editingIndicator.formula_type] || '#888'}55`,
+              borderRadius: 6, padding: '3px 12px', fontSize: 12, fontFamily: 'Orbitron, monospace',
+            }}>{editingIndicator.formula_type}</span>
+            <span className={STATUS_BADGE[editingIndicator.status] || 'badge badge-dim'}>{editingIndicator.status}</span>
+            {editingIndicator.is_common && <span className="badge badge-success">Общий</span>}
+            {editingIndicator.indicator_group && <span className="badge badge-info">{editingIndicator.indicator_group}</span>}
+          </div>
+          {editingIndicator.criteria?.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>КРИТЕРИЙ ОЦЕНКИ</div>
+              {editingIndicator.criteria.map((cr: any, i: number) => (
+                <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
+                  <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: 8 }}>{cr.criterion}</div>
+                  {cr.numerator_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Числитель: {cr.numerator_label}{cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}</div>}
+                  {cr.thresholds?.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>
+                      {cr.thresholds.map((t: any, ti: number) => (
+                        <div key={ti} style={{ fontSize: 12, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 3 }}>
+                          {t.op}{t.value}% → {t.score} баллов
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+            Используется в <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{editingIndicator.used_in_cards_count}</span> карточках
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ ── */}
+    {editingIndicator && !editingIndicator._viewOnly && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        onClick={e => { if (e.target === e.currentTarget) setEditingIndicator(null) }}
+      >
+        <div
+          className="cyber-card"
+          style={{ maxWidth: 680, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 0, position: 'relative' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Шапка модала */}
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 1 }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>РЕДАКТИРОВАТЬ ПОКАЗАТЕЛЬ</div>
+            <button onClick={() => setEditingIndicator(null)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+
+          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Название */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>НАЗВАНИЕ</label>
+              {editingIndicator.status === 'draft' ? (
+                <textarea
+                  rows={2}
+                  value={editForm.name}
+                  onChange={e => setEditForm((f: any) => ({ ...f, name: e.target.value }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                />
+              ) : (
+                <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--text)', padding: '8px 0' }}>{editingIndicator.name}</div>
+              )}
+            </div>
+
+            {/* Тип (read-only) и Общий */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТИП</label>
+                <span style={{
+                  background: `${TYPE_COLORS[editingIndicator.formula_type] || '#888'}22`,
+                  color: TYPE_COLORS[editingIndicator.formula_type] || '#888',
+                  border: `1px solid ${TYPE_COLORS[editingIndicator.formula_type] || '#888'}55`,
+                  borderRadius: 6, padding: '4px 14px', fontSize: 12, fontFamily: 'Orbitron, monospace',
+                }}>
+                  {editingIndicator.formula_type}
+                </span>
+              </div>
+              {editingIndicator.is_common && (
+                <div style={{ paddingTop: 20 }}>
+                  <span className="badge badge-success">Общий показатель</span>
+                </div>
+              )}
+            </div>
+
+            {/* Группа */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ГРУППА</label>
+              <select
+                value={editForm.indicator_group}
+                onChange={e => setEditForm((f: any) => ({ ...f, indicator_group: e.target.value }))}
+                style={{ background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, width: '100%', cursor: 'pointer' }}
+              >
+                {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all').map(g => (
+                  <option key={g.id} value={g.id}>{g.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Критерий */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</label>
+              <textarea
+                rows={3}
+                value={editForm.criterion}
+                onChange={e => setEditForm((f: any) => ({ ...f, criterion: e.target.value }))}
+                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Числитель / Знаменатель / Нарастающим — для числовых типов */}
+            {isNumericType && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЧИСЛИТЕЛЬ</label>
+                    <input
+                      value={editForm.numerator_label}
+                      onChange={e => setEditForm((f: any) => ({ ...f, numerator_label: e.target.value }))}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЗНАМЕНАТЕЛЬ</label>
+                    <input
+                      value={editForm.denominator_label}
+                      onChange={e => setEditForm((f: any) => ({ ...f, denominator_label: e.target.value }))}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}>
+                  <input
+                    type="checkbox"
+                    checked={editForm.cumulative}
+                    onChange={e => setEditForm((f: any) => ({ ...f, cumulative: e.target.checked }))}
+                  />
+                  Нарастающим итогом
+                </label>
+              </>
+            )}
+
+            {/* Пороги — для threshold / multi_threshold */}
+            {(editingIndicator?.formula_type === 'threshold' || editingIndicator?.formula_type === 'multi_threshold') && (
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОРОГИ (JSON)</label>
+                <textarea
+                  rows={5}
+                  value={editForm.thresholds}
+                  onChange={e => setEditForm((f: any) => ({ ...f, thresholds: e.target.value }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--accent3)', padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
+
+            {/* Квартальные пороги */}
+            {editingIndicator?.formula_type === 'quarterly_threshold' && (
+              <div>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>КВАРТАЛЬНЫЕ ПОРОГИ (JSON)</label>
+                <textarea
+                  rows={6}
+                  value={editForm.quarterly_thresholds}
+                  onChange={e => setEditForm((f: any) => ({ ...f, quarterly_thresholds: e.target.value }))}
+                  style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--accent3)', padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                />
+              </div>
+            )}
+
+            {/* Тексты при выполнении / невыполнении — для binary + is_common */}
+            {isBinaryType && editingIndicator?.is_common && (
+              <>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТЕКСТ ПРИ ВЫПОЛНЕНИИ</label>
+                  <textarea
+                    rows={2}
+                    value={editForm.common_text_positive}
+                    onChange={e => setEditForm((f: any) => ({ ...f, common_text_positive: e.target.value }))}
+                    style={{ width: '100%', background: 'rgba(0,255,157,0.04)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: 'var(--danger)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТЕКСТ ПРИ НЕВЫПОЛНЕНИИ</label>
+                  <textarea
+                    rows={2}
+                    value={editForm.common_text_negative}
+                    onChange={e => setEditForm((f: any) => ({ ...f, common_text_negative: e.target.value }))}
+                    style={{ width: '100%', background: 'rgba(255,59,92,0.04)', border: '1px solid rgba(255,59,92,0.2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Кнопки */}
+          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--card)' }}>
+            <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={() => setEditingIndicator(null)}>
+              Отмена
+            </button>
+            <button className="action-btn btn-fill" style={{ fontSize: 13 }} onClick={handleSave} disabled={saving}>
+              {saving ? '...' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </>
   )
 }
