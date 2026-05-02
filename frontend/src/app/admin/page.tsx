@@ -747,26 +747,30 @@ function SubordinationTab() {
   const notInMatrix = entries.filter(e => !e.in_matrix)
   const withoutCard = inMatrix.filter(e => !e.has_kpi_card)
 
-  // Верхний уровень подразделения: всё до первой точки
-  function topUnit(unit: string) {
-    return unit.split('.')[0].trim()
+  // Нормализация: верхний уровень подразделения + схлопывание пробелов
+  function normalizeUnit(unit: string): string {
+    return unit.split('.')[0].replace(/\s+/g, ' ').trim()
   }
 
-  // Уникальные верхнеуровневые подразделения
-  const topUnitList = [...new Set(
-    inMatrix.map(e => topUnit(e.unit || 'Прочие'))
-  )].sort()
-
-  // Счётчик для верхнеуровневого подразделения
-  function countForTopUnit(top: string) {
-    return inMatrix.filter(e => topUnit(e.unit || 'Прочие') === top).length
-  }
+  // Уникальные верхнеуровневые подразделения через Map (гарантирует деdup)
+  const deptMap = new Map<string, number>()
+  inMatrix.forEach(e => {
+    const u = normalizeUnit(e.unit || 'Прочие') || 'Прочие'
+    deptMap.set(u, (deptMap.get(u) ?? 0) + 1)
+  })
+  const topUnitList = [...deptMap.entries()]
+    .sort(([a], [b]) => {
+      if (a === 'Руководство') return -1
+      if (b === 'Руководство') return 1
+      return a.localeCompare(b, 'ru')
+    })
+    .map(([unit]) => unit)
 
   // Записи для правой части (tree mode)
   const treeEntries =
     selectedUnit === '__all__' ? inMatrix :
     selectedUnit === '__no_card__' ? withoutCard :
-    inMatrix.filter(e => topUnit(e.unit || 'Прочие') === selectedUnit)
+    inMatrix.filter(e => normalizeUnit(e.unit || 'Прочие') === selectedUnit)
 
   // Ряд должности (общий для обоих режимов дерева)
   function EntryRow({ entry }: { entry: SubordinationEntry }) {
@@ -903,9 +907,10 @@ function SubordinationTab() {
       {/* Вид: Список */}
       {viewMode === 'list' && (
         <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ position: 'sticky', top: 64, zIndex: 20, background: '#0a0a1a' }}>
+              <tr style={{ position: 'sticky', top: 0, zIndex: 20, background: '#0a0a1a' }}>
                 <th style={TH}>Должность</th>
                 <th style={TH}>Подразделение</th>
                 <th style={TH}>Руководитель</th>
@@ -973,6 +978,7 @@ function SubordinationTab() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -999,7 +1005,7 @@ function SubordinationTab() {
                 onMouseLeave={e => { if (selectedUnit !== unit) e.currentTarget.style.background = 'transparent' }}
               >
                 <span style={{ fontSize: 11, color: selectedUnit === unit ? 'var(--accent)' : 'rgba(255,255,255,0.75)', fontFamily: 'Exo 2, sans-serif', lineHeight: 1.3 }}>{unit}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginLeft: 6, flexShrink: 0 }}>{countForTopUnit(unit)}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginLeft: 6, flexShrink: 0 }}>{deptMap.get(unit)}</span>
               </div>
             ))}
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
@@ -1015,13 +1021,15 @@ function SubordinationTab() {
 
           {/* Правая часть */}
           <div className="cyber-card" style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
-            {treeEntries.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
-                {selectedUnit === '__no_card__' ? '✅ Все должности имеют KPI-карточку' : 'Нет должностей'}
-              </div>
-            ) : (
-              treeEntries.map(entry => <EntryRow key={entry.role_id} entry={entry} />)
-            )}
+            <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
+              {treeEntries.length === 0 ? (
+                <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+                  {selectedUnit === '__no_card__' ? '✅ Все должности имеют KPI-карточку' : 'Нет должностей'}
+                </div>
+              ) : (
+                treeEntries.map(entry => <EntryRow key={entry.role_id} entry={entry} />)
+              )}
+            </div>
           </div>
         </div>
       )}
