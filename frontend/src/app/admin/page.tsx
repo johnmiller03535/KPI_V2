@@ -1988,72 +1988,82 @@ function KpiIndicatorsTab() {
 
         {/* Основная область */}
         <div style={{ flex: 1, paddingLeft: 20, overflowY: 'auto' }}>
-          <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={TH}>Название</th>
-                  <th style={TH}>Тип</th>
-                  <th style={{ ...TH, textAlign: 'center' }}>Используется</th>
-                  <th style={TH}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} style={{ ...TD, textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>
-                      Ничего не найдено
-                    </td>
-                  </tr>
-                ) : filtered.map((ind: any) => {
-                  const isInactive = ind.status !== 'active'
-                  return (
-                  <tr key={ind.id}
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s', opacity: isInactive ? 0.5 : 1 }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <td style={{ ...TD, fontWeight: 600, maxWidth: 380 }}>
-                      <div>{ind.name}</div>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
-                        {ind.is_common && <span style={{ fontSize: 10, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace' }}>ОБЩИЙ</span>}
-                        {isInactive && <span style={{ fontSize: 10, color: '#888', fontFamily: 'Orbitron, monospace', background: 'rgba(255,255,255,0.06)', borderRadius: 4, padding: '0 5px' }}>{ind.status}</span>}
-                      </div>
-                    </td>
-                    <td style={TD}>
-                      <span style={{
-                        background: `${TYPE_COLORS[ind.formula_type] || '#888'}22`,
-                        color: TYPE_COLORS[ind.formula_type] || '#888',
-                        border: `1px solid ${TYPE_COLORS[ind.formula_type] || '#888'}55`,
-                        borderRadius: 6, padding: '2px 10px', fontSize: 11, fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap',
-                      }}>
-                        {TYPE_LABELS[ind.formula_type] || ind.formula_type}
-                      </span>
-                    </td>
-                    <td style={{ ...TD, textAlign: 'center', fontFamily: 'Orbitron, monospace', fontSize: 13, color: ind.used_in_cards_count > 0 ? 'var(--accent3)' : 'var(--text-dim)' }}>
-                      {ind.used_in_cards_count ?? 0}
-                    </td>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                      <button
-                        className="action-btn btn-view"
-                        style={{ fontSize: 11, padding: '4px 10px', marginRight: 6 }}
-                        onClick={() => setEditingIndicator({ ...ind, _viewOnly: true })}
-                      >
-                        Просмотр
-                      </button>
-                      <button
-                        className="action-btn btn-fill"
-                        style={{ fontSize: 11, padding: '4px 10px' }}
-                        onClick={() => openEdit(ind)}
-                      >
-                        Редактировать
-                      </button>
-                    </td>
-                  </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          {/* Sticky заголовок колонок внутри скролл-контейнера */}
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 10,
+            background: '#0a0a1a',
+            borderBottom: '2px solid rgba(0,229,255,0.25)',
+            display: 'grid',
+            gridTemplateColumns: '1fr 160px 110px 230px',
+            padding: '8px 16px',
+          }}>
+            <span style={{ color: 'var(--accent)', fontSize: 11, fontFamily: 'Orbitron, monospace' }}>НАЗВАНИЕ</span>
+            <span style={{ color: 'var(--accent)', fontSize: 11, fontFamily: 'Orbitron, monospace' }}>ТИП</span>
+            <span style={{ color: 'var(--accent)', fontSize: 11, fontFamily: 'Orbitron, monospace', textAlign: 'center' }}>ИСПОЛЬЗУЕТСЯ</span>
+            <span></span>
+          </div>
+
+          {/* Список показателей */}
+          <div className="cyber-card" style={{ padding: 0, borderRadius: '0 0 8px 8px' }}>
+            {filtered.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 32, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                Ничего не найдено
+              </div>
+            ) : filtered.map((ind: any) => {
+              const isInactive = ind.status !== 'active'
+              return (
+                <div key={ind.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 160px 110px 230px',
+                    padding: '10px 16px',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    transition: 'background 0.15s',
+                    opacity: isInactive ? 0.5 : 1,
+                    alignItems: 'center',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ paddingRight: 12 }}>
+                    <div style={{ fontWeight: 600, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>{ind.name}</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                      {ind.is_common && <span style={{ fontSize: 10, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace' }}>ОБЩИЙ</span>}
+                      {isInactive && <span style={{ fontSize: 10, color: '#888', fontFamily: 'Orbitron, monospace', background: 'rgba(255,255,255,0.06)', borderRadius: 4, padding: '0 5px' }}>{ind.status}</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <span style={{
+                      background: `${TYPE_COLORS[ind.formula_type] || '#888'}22`,
+                      color: TYPE_COLORS[ind.formula_type] || '#888',
+                      border: `1px solid ${TYPE_COLORS[ind.formula_type] || '#888'}55`,
+                      borderRadius: 6, padding: '2px 10px', fontSize: 11, fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap',
+                    }}>
+                      {TYPE_LABELS[ind.formula_type] || ind.formula_type}
+                    </span>
+                  </div>
+                  <div style={{ textAlign: 'center', fontFamily: 'Orbitron, monospace', fontSize: 13, color: ind.used_in_cards_count > 0 ? 'var(--accent3)' : 'var(--text-dim)' }}>
+                    {ind.used_in_cards_count ?? 0}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, whiteSpace: 'nowrap' }}>
+                    <button
+                      className="action-btn btn-view"
+                      style={{ fontSize: 11, padding: '4px 10px' }}
+                      onClick={() => setEditingIndicator({ ...ind, _viewOnly: true })}
+                    >
+                      Просмотр
+                    </button>
+                    <button
+                      className="action-btn btn-fill"
+                      style={{ fontSize: 11, padding: '4px 10px' }}
+                      onClick={() => openEdit(ind)}
+                    >
+                      Редактировать
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
