@@ -837,72 +837,73 @@ function SubordinationTab() {
 
   return (
     <div className="fade-up">
-      {/* Заголовок + кнопки */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <div className="section-title-main" style={{ margin: 0 }}>Матрица подчинения</div>
-          <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
-            {inMatrix.length} должностей в матрице · {entries.length} всего в KPI_Mapping
+      {/* ── Sticky-шапка: заголовок + кнопки + алерты ── */}
+      <div style={{ position: 'sticky', top: 64, zIndex: 30, background: 'var(--bg)', paddingBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
+          <div>
+            <div className="section-title-main" style={{ margin: 0 }}>Матрица подчинения</div>
+            <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
+              {inMatrix.length} должностей в матрице · {entries.length} всего в KPI_Mapping
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, overflow: 'hidden' }}>
+              <button onClick={() => setViewMode('list')}
+                style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'list' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'list' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}>
+                ≡ Список
+              </button>
+              <button onClick={() => setViewMode('tree')}
+                style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'tree' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'tree' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}>
+                🏢 По подразделениям
+              </button>
+            </div>
+            <button
+              className="cyber-btn cyber-btn-success"
+              style={{ fontSize: 12, padding: '8px 14px' }}
+              onClick={async () => {
+                setRebuilding(true); setRebuildResult(null)
+                try {
+                  const res = await api.post('/admin/subordination/rebuild-from-people-export')
+                  setRebuildResult({ ok: true, ...res.data })
+                  await loadData()
+                } catch (err: any) {
+                  setRebuildResult({ ok: false, error: err.response?.data?.detail || 'Ошибка' })
+                } finally { setRebuilding(false) }
+              }}
+              disabled={rebuilding}
+            >
+              {rebuilding ? '⏳ Импорт...' : '📥 Импорт из People'}
+            </button>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* Переключатель вида */}
-          <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, overflow: 'hidden' }}>
-            <button onClick={() => setViewMode('list')}
-              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'list' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'list' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}>
-              ≡ Список
-            </button>
-            <button onClick={() => setViewMode('tree')}
-              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'tree' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'tree' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}>
-              🏢 По подразделениям
-            </button>
+
+        {rebuildResult && (
+          <div className={`alert-banner ${rebuildResult.ok ? 'alert-success' : 'alert-warn'}`} style={{ marginTop: 10, marginBottom: 0 }}>
+            {rebuildResult.ok
+              ? <span>✅ Импортировано: {rebuildResult.mapped_pairs} пар · файл: {rebuildResult.file?.split('/').pop()}</span>
+              : <span>⚠️ {typeof rebuildResult.error === 'object' ? JSON.stringify(rebuildResult.error) : rebuildResult.error}</span>}
           </div>
-          <button
-            className="cyber-btn cyber-btn-success"
-            style={{ fontSize: 12, padding: '8px 14px' }}
-            onClick={async () => {
-              setRebuilding(true); setRebuildResult(null)
-              try {
-                const res = await api.post('/admin/subordination/rebuild-from-people-export')
-                setRebuildResult({ ok: true, ...res.data })
-                await loadData()
-              } catch (err: any) {
-                setRebuildResult({ ok: false, error: err.response?.data?.detail || 'Ошибка' })
-              } finally { setRebuilding(false) }
-            }}
-            disabled={rebuilding}
-          >
-            {rebuilding ? '⏳ Импорт...' : '📥 Импорт из People'}
-          </button>
-        </div>
+        )}
+
+        {rebuildResult?.ok && rebuildResult.positions_without_cards?.length > 0 && (
+          <div style={{ background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', borderRadius: 10, padding: '10px 14px', marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--warn)', fontWeight: 600, marginBottom: 6 }}>
+              ⚠️ Должности без KPI-карточки ({rebuildResult.positions_without_cards.length}):
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {rebuildResult.positions_without_cards.map((p: any) => (
+                <span key={p.role_id} style={{ fontSize: 11, color: 'var(--text-dim)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '2px 8px' }}>
+                  {p.role} ({p.unit})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {saveResult?.ok && (
+          <div className="alert-banner alert-success" style={{ marginTop: 8, marginBottom: 0 }}>✅ Сохранено</div>
+        )}
       </div>
-
-      {rebuildResult && (
-        <div className={`alert-banner ${rebuildResult.ok ? 'alert-success' : 'alert-warn'}`} style={{ marginBottom: 12 }}>
-          {rebuildResult.ok
-            ? <span>✅ Импортировано: {rebuildResult.mapped_pairs} пар · файл: {rebuildResult.file?.split('/').pop()}</span>
-            : <span>⚠️ {typeof rebuildResult.error === 'object' ? JSON.stringify(rebuildResult.error) : rebuildResult.error}</span>}
-        </div>
-      )}
-
-      {rebuildResult?.ok && rebuildResult.positions_without_cards?.length > 0 && (
-        <div style={{ background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: 13, color: 'var(--warn)', fontWeight: 600, marginBottom: 8 }}>
-            ⚠️ Должности без KPI-карточки ({rebuildResult.positions_without_cards.length}):
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {rebuildResult.positions_without_cards.map((p: any) => (
-              <span key={p.role_id} style={{ fontSize: 11, color: 'var(--text-dim)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '2px 8px' }}>
-                {p.role} ({p.unit})
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {saveResult?.ok && (
-        <div className="alert-banner alert-success" style={{ marginBottom: 12 }}>✅ Сохранено</div>
-      )}
 
       {/* Вид: Список */}
       {viewMode === 'list' && (
@@ -984,9 +985,9 @@ function SubordinationTab() {
 
       {/* Вид: По подразделениям (двухколоночный layout) */}
       {viewMode === 'tree' && (
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          {/* Левая панель — sticky */}
-          <div className="cyber-card" style={{ width: 230, minWidth: 230, padding: 0, overflow: 'auto', flexShrink: 0, position: 'sticky', top: 72, maxHeight: 'calc(100vh - 96px)' }}>
+        <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 200px)', overflow: 'hidden' }}>
+          {/* Левая панель — внутренний скролл */}
+          <div className="cyber-card" style={{ width: 260, minWidth: 260, padding: 0, overflowY: 'auto', flexShrink: 0 }}>
             {/* Все должности */}
             <div
               onClick={() => setSelectedUnit('__all__')}
@@ -1019,17 +1020,15 @@ function SubordinationTab() {
             </div>
           </div>
 
-          {/* Правая часть */}
-          <div className="cyber-card" style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
-            <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
-              {treeEntries.length === 0 ? (
-                <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
-                  {selectedUnit === '__no_card__' ? '✅ Все должности имеют KPI-карточку' : 'Нет должностей'}
-                </div>
-              ) : (
-                treeEntries.map(entry => <EntryRow key={entry.role_id} entry={entry} />)
-              )}
-            </div>
+          {/* Правая часть — внутренний скролл */}
+          <div className="cyber-card" style={{ flex: 1, padding: 0, overflowY: 'auto' }}>
+            {treeEntries.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+                {selectedUnit === '__no_card__' ? '✅ Все должности имеют KPI-карточку' : 'Нет должностей'}
+              </div>
+            ) : (
+              treeEntries.map(entry => <EntryRow key={entry.role_id} entry={entry} />)
+            )}
           </div>
         </div>
       )}
