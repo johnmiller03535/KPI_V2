@@ -399,9 +399,16 @@ class SubordinationUpdate(BaseModel):
 
 @router.get("/subordination")
 async def get_subordination(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
     """Список всех должностей с их руководителями из subordination.json."""
+    from app.models.kpi_constructor import KpiRoleCard
+    cards_res = await db.execute(
+        select(KpiRoleCard.pos_id).where(KpiRoleCard.status == "active").distinct()
+    )
+    cards_pos_ids = {row[0] for row in cards_res.fetchall()}
+
     all_roles = kpi_mapping_service.get_all_roles()
     subordination_service._load()
     evaluator_map = subordination_service._data.get("evaluator", {})
@@ -426,8 +433,87 @@ async def get_subordination(
             "in_matrix": in_matrix,
             "evaluator_role_id": evaluator_role_id,
             "evaluator_name": evaluator_name,
+            "has_kpi_card": role_info.get("pos_id") in cards_pos_ids,
         })
     return result
+
+
+@router.get("/kpi-cards/positions-without-cards")
+async def get_positions_without_cards(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Должности из KPI_Mapping без активных KPI-карточек."""
+    from app.models.kpi_constructor import KpiRoleCard
+    cards_res = await db.execute(
+        select(KpiRoleCard.pos_id).where(KpiRoleCard.status == "active").distinct()
+    )
+    cards_pos_ids = {row[0] for row in cards_res.fetchall()}
+
+    all_roles = kpi_mapping_service.get_all_roles()
+    missing = [
+        {
+            "pos_id": r.get("pos_id"),
+            "role_id": r.get("role_id"),
+            "role": r.get("role", ""),
+            "unit": r.get("unit", ""),
+        }
+        for r in all_roles
+        if r.get("pos_id") not in cards_pos_ids
+    ]
+    return sorted(missing, key=lambda x: x["pos_id"] or 0)
+
+
+class CreateCardRequest(BaseModel):
+    pos_id: int
+    role_id: str
+    role_name: str
+    unit: Optional[str] = None
+    copy_from_card_id: Optional[str] = None
+
+
+@router.post("/kpi-cards/")
+async def create_kpi_card(
+    body: CreateCardRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Создать KPI-карточку. Если copy_from_card_id — скопировать показатели из неё."""
+    from app.models.kpi_constructor import KpiRoleCard, KpiRoleCardIndicator
+    import uuid as _uuid
+    from datetime import date
+
+    card = KpiRoleCard(
+        id=_uuid.uuid4(),
+        pos_id=body.pos_id,
+        role_id=body.role_id,
+        role_name=body.role_name,
+        unit=body.unit,
+        version=1,
+        status="active",
+        valid_from=date.today(),
+        created_by=current_user.login,
+    )
+    db.add(card)
+    await db.flush()
+
+    if body.copy_from_card_id:
+        src_res = await db.execute(
+            select(KpiRoleCardIndicator).where(KpiRoleCardIndicator.card_id == body.copy_from_card_id)
+        )
+        for src_ci in src_res.scalars().all():
+            new_ci = KpiRoleCardIndicator(
+                id=_uuid.uuid4(),
+                card_id=card.id,
+                indicator_id=src_ci.indicator_id,
+                criterion_id=src_ci.criterion_id,
+                weight=src_ci.weight,
+                order_num=src_ci.order_num,
+            )
+            db.add(new_ci)
+
+    await db.commit()
+    return {"id": str(card.id), "pos_id": card.pos_id, "role_name": card.role_name, "status": card.status}
 
 
 @router.patch("/subordination/{role_id}")
@@ -456,8 +542,20 @@ async def rebuild_subordination(
     Файл должен лежать в reference/people_export.xlsx или docs/people_export.xlsx.
     """
     stats = await rebuild_subordination_from_people_export(db)
-    if stats["errors"]:
+    if stats.get("errors"):
         raise HTTPException(status_code=400, detail=stats)
+
+    from app.models.kpi_constructor import KpiRoleCard
+    cards_res = await db.execute(
+        select(KpiRoleCard.pos_id).where(KpiRoleCard.status == "active").distinct()
+    )
+    cards_pos_ids = {row[0] for row in cards_res.fetchall()}
+    all_roles = kpi_mapping_service.get_all_roles()
+    stats["positions_without_cards"] = [
+        {"pos_id": r.get("pos_id"), "role_id": r.get("role_id"), "role": r.get("role", ""), "unit": r.get("unit", "")}
+        for r in all_roles
+        if r.get("pos_id") not in cards_pos_ids
+    ]
     return stats
 
 

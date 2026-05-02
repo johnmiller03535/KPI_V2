@@ -690,6 +690,7 @@ type SubordinationEntry = {
   in_matrix: boolean
   evaluator_role_id: string | null
   evaluator_name: string | null
+  has_kpi_card: boolean
 }
 
 function SubordinationTab() {
@@ -701,6 +702,8 @@ function SubordinationTab() {
   const [saveResult, setSaveResult] = useState<{ role_id: string; ok: boolean } | null>(null)
   const [rebuilding, setRebuilding] = useState(false)
   const [rebuildResult, setRebuildResult] = useState<any>(null)
+  const [viewMode, setViewMode] = useState<'list' | 'tree'>('list')
+  const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set())
 
   useEffect(() => { loadData() }, [])
 
@@ -732,6 +735,15 @@ function SubordinationTab() {
     } finally { setSaving(null) }
   }
 
+  function toggleUnit(unit: string) {
+    setCollapsedUnits(prev => {
+      const next = new Set(prev)
+      if (next.has(unit)) next.delete(unit)
+      else next.add(unit)
+      return next
+    })
+  }
+
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 64 }}>
       <div className="loader-ring" style={{ margin: '0 auto' }} />
@@ -741,6 +753,13 @@ function SubordinationTab() {
 
   const inMatrix = entries.filter(e => e.in_matrix)
   const notInMatrix = entries.filter(e => !e.in_matrix)
+
+  const groupedByUnit = inMatrix.reduce((acc: any, e: any) => {
+    const u = e.unit || 'Прочие'
+    if (!acc[u]) acc[u] = []
+    acc[u].push(e)
+    return acc
+  }, {})
 
   return (
     <div className="fade-up">
@@ -752,7 +771,22 @@ function SubordinationTab() {
             {inMatrix.length} должностей в матрице · {entries.length} всего в KPI_Mapping
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Переключатель вида */}
+          <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, overflow: 'hidden' }}>
+            <button
+              onClick={() => setViewMode('list')}
+              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'list' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'list' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}
+            >
+              ≡ Список
+            </button>
+            <button
+              onClick={() => setViewMode('tree')}
+              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'tree' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'tree' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}
+            >
+              🌳 Дерево
+            </button>
+          </div>
           <button className="cyber-btn cyber-btn-primary" style={{ fontSize: 12, padding: '8px 14px' }} onClick={loadData}>
             🔄 Обновить
           </button>
@@ -783,89 +817,158 @@ function SubordinationTab() {
             : <span>⚠️ {typeof rebuildResult.error === 'object' ? JSON.stringify(rebuildResult.error) : rebuildResult.error}</span>}
         </div>
       )}
+
+      {/* Баннер должностей без KPI-карточки */}
+      {rebuildResult?.ok && rebuildResult.positions_without_cards?.length > 0 && (
+        <div style={{ background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: 'var(--warn)', fontWeight: 600, marginBottom: 8 }}>
+            ⚠️ Должности без KPI-карточки ({rebuildResult.positions_without_cards.length}):
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {rebuildResult.positions_without_cards.map((p: any) => (
+              <span key={p.role_id} style={{ fontSize: 11, color: 'var(--text-dim)', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '2px 8px' }}>
+                {p.role} ({p.unit})
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {saveResult?.ok && (
         <div className="alert-banner alert-success" style={{ marginBottom: 16 }}>
           ✅ Сохранено
         </div>
       )}
 
-      {/* Таблица */}
-      <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={TH}>Должность</th>
-              <th style={TH}>Подразделение</th>
-              <th style={TH}>Управление</th>
-              <th style={TH}>Руководитель</th>
-              <th style={{ ...TH, width: 120 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {inMatrix.map((entry, i) => (
-              <tr key={entry.role_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                <td style={TD}>
-                  <div style={{ fontWeight: 600, fontSize: 13 }}>{entry.role}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>{entry.role_id}</div>
-                </td>
-                <td style={{ ...TD, fontSize: 12, color: 'var(--text-dim)' }}>{entry.unit}</td>
-                <td style={{ ...TD, fontSize: 11, color: 'var(--text-dim)' }}>{entry.management}</td>
-                <td style={TD}>
-                  {editingId === entry.role_id ? (
-                    <select
-                      value={editValue}
-                      onChange={e => setEditValue(e.target.value)}
-                      style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,229,255,0.35)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '4px 8px', width: '100%', maxWidth: 260 }}
-                    >
-                      <option value="">— Директорский уровень —</option>
-                      {entries.filter(e => e.role_id !== entry.role_id).map(e => (
-                        <option key={e.role_id} value={e.role_id}>{e.role} ({e.role_id})</option>
-                      ))}
-                    </select>
-                  ) : entry.evaluator_role_id ? (
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--accent)' }}>{entry.evaluator_name || entry.evaluator_role_id}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginTop: 2 }}>{entry.evaluator_role_id}</div>
-                    </div>
-                  ) : (
-                    <span style={{ color: 'var(--text-dim)', fontSize: 12, fontStyle: 'italic' }}>— директор —</span>
-                  )}
-                </td>
-                <td style={{ ...TD, textAlign: 'right' }}>
-                  {editingId === entry.role_id ? (
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button
-                        className="action-btn btn-fill"
-                        style={{ fontSize: 11, padding: '4px 12px' }}
-                        onClick={() => handleSave(entry.role_id)}
-                        disabled={saving === entry.role_id}
+      {/* Вид: Список */}
+      {viewMode === 'list' && (
+        <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={TH}>Должность</th>
+                <th style={TH}>Подразделение</th>
+                <th style={TH}>Управление</th>
+                <th style={TH}>Руководитель</th>
+                <th style={TH}>Карточка</th>
+                <th style={{ ...TH, width: 120 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {inMatrix.map((entry) => (
+                <tr key={entry.role_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td style={TD}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{entry.role}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>{entry.role_id}</div>
+                  </td>
+                  <td style={{ ...TD, fontSize: 12, color: 'var(--text-dim)' }}>{entry.unit}</td>
+                  <td style={{ ...TD, fontSize: 11, color: 'var(--text-dim)' }}>{entry.management}</td>
+                  <td style={TD}>
+                    {editingId === entry.role_id ? (
+                      <select
+                        value={editValue}
+                        onChange={e => setEditValue(e.target.value)}
+                        style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,229,255,0.35)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '4px 8px', width: '100%', maxWidth: 260 }}
                       >
-                        {saving === entry.role_id ? '...' : '💾'}
-                      </button>
+                        <option value="">— Директорский уровень —</option>
+                        {entries.filter(e => e.role_id !== entry.role_id).map(e => (
+                          <option key={e.role_id} value={e.role_id}>{e.role} ({e.role_id})</option>
+                        ))}
+                      </select>
+                    ) : entry.evaluator_role_id ? (
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--accent)' }}>{entry.evaluator_name || entry.evaluator_role_id}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginTop: 2 }}>{entry.evaluator_role_id}</div>
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--text-dim)', fontSize: 12, fontStyle: 'italic' }}>— директор —</span>
+                    )}
+                  </td>
+                  <td style={TD}>
+                    {entry.has_kpi_card
+                      ? <span className="badge badge-success" style={{ fontSize: 10 }}>✅ есть</span>
+                      : <span className="badge badge-warn" style={{ fontSize: 10 }}>⚠️ нет</span>
+                    }
+                  </td>
+                  <td style={{ ...TD, textAlign: 'right' }}>
+                    {editingId === entry.role_id ? (
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <button
+                          className="action-btn btn-fill"
+                          style={{ fontSize: 11, padding: '4px 12px' }}
+                          onClick={() => handleSave(entry.role_id)}
+                          disabled={saving === entry.role_id}
+                        >
+                          {saving === entry.role_id ? '...' : '💾'}
+                        </button>
+                        <button
+                          className="action-btn btn-view"
+                          style={{ fontSize: 11, padding: '4px 10px' }}
+                          onClick={() => setEditingId(null)}
+                        >✕</button>
+                      </div>
+                    ) : (
                       <button
                         className="action-btn btn-view"
-                        style={{ fontSize: 11, padding: '4px 10px' }}
-                        onClick={() => setEditingId(null)}
-                      >✕</button>
+                        style={{ fontSize: 11, padding: '4px 12px' }}
+                        onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null) }}
+                      >
+                        ✏️ Изменить
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Вид: Дерево */}
+      {viewMode === 'tree' && (
+        <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
+          {Object.entries(groupedByUnit).map(([unit, unitEntries]: [string, any]) => (
+            <div key={unit}>
+              <div
+                onClick={() => toggleUnit(unit)}
+                style={{ padding: '10px 16px', background: 'rgba(0,229,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none' }}
+              >
+                <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 11, color: 'var(--accent)', letterSpacing: 1 }}>
+                  {collapsedUnits.has(unit) ? '▶' : '▼'} {unit}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{unitEntries.length}</span>
+              </div>
+              {!collapsedUnits.has(unit) && (unitEntries as any[]).map((entry: any) => (
+                <div key={entry.role_id} style={{ padding: '10px 16px 10px 32px', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{entry.role}</span>
+                      {entry.has_kpi_card
+                        ? <span className="badge badge-success" style={{ fontSize: 10 }}>✅ карточка</span>
+                        : <span className="badge badge-warn" style={{ fontSize: 10 }}>⚠️ нет карточки</span>
+                      }
                     </div>
-                  ) : (
-                    <button
-                      className="action-btn btn-view"
-                      style={{ fontSize: 11, padding: '4px 12px' }}
-                      onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null) }}
-                    >
-                      ✏️ Изменить
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>{entry.role_id}</div>
+                    {entry.evaluator_name && (
+                      <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2 }}>→ {entry.evaluator_name}</div>
+                    )}
+                  </div>
+                  <button
+                    className="action-btn btn-view"
+                    style={{ fontSize: 11, padding: '4px 12px' }}
+                    onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null); setViewMode('list') }}
+                  >
+                    ✏️ Изменить
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Не в матрице */}
       {notInMatrix.length > 0 && (
@@ -997,8 +1100,10 @@ const STATUS_BADGE: Record<string, string> = {
 function KpiTab() {
   const [cards, setCards] = useState<any[]>([])
   const [allIndicators, setAllIndicators] = useState<any[]>([])
+  const [positionsWithoutCards, setPositionsWithoutCards] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPosId, setSelectedPosId] = useState('')
+  const [selectedUnit, setSelectedUnit] = useState('all')
   const [card, setCard] = useState<any>(null)
   const [cardLoading, setCardLoading] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -1010,15 +1115,26 @@ function KpiTab() {
   const [addWeight, setAddWeight] = useState('')
   const [addingSaving, setAddingSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  // Wizard
+  const [showWizard, setShowWizard] = useState(false)
+  const [wizardStep, setWizardStep] = useState(1)
+  const [wizardData, setWizardData] = useState({ role_name: '', pos_id: '', unit: '', copy_mode: 'empty', copy_from_card_id: '' })
+  const [wizardSaving, setWizardSaving] = useState(false)
+  const [wizardPrefilledPos, setWizardPrefilledPos] = useState<any>(null)
 
-  useEffect(() => {
-    Promise.all([
+  async function loadCards() {
+    const [cds, inds, missing] = await Promise.all([
       api.get('/kpi/cards?status=active').then(r => r.data),
       api.get('/kpi/indicators?status=active').then(r => r.data),
-    ]).then(([cds, inds]) => {
-      setCards(Array.isArray(cds) ? cds : (cds.items ?? []))
-      setAllIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
-    }).finally(() => setLoading(false))
+      api.get('/admin/kpi-cards/positions-without-cards').then(r => r.data).catch(() => []),
+    ])
+    setCards(Array.isArray(cds) ? cds : (cds.items ?? []))
+    setAllIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
+    setPositionsWithoutCards(Array.isArray(missing) ? missing : [])
+  }
+
+  useEffect(() => {
+    loadCards().finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -1039,15 +1155,35 @@ function KpiTab() {
     return acc
   }, {})
 
-  const SEL = {
-    background: 'rgba(0,229,255,0.07)',
-    border: '1px solid rgba(0,229,255,0.25)',
-    borderRadius: 8,
-    color: 'var(--text)',
-    padding: '8px 12px',
-    fontFamily: 'Exo 2, sans-serif',
-    fontSize: 14,
+  // Cards shown in right panel based on selected unit
+  const displayedCards: any[] = selectedUnit === 'all'
+    ? cards
+    : selectedUnit === 'missing'
+    ? []
+    : (cardsByUnit[selectedUnit] || [])
+
+  const sidebarItemStyle = (active: boolean): React.CSSProperties => ({
+    padding: '10px 16px',
     cursor: 'pointer',
+    borderLeft: active ? '3px solid var(--accent)' : '3px solid transparent',
+    background: active ? 'rgba(0,229,255,0.06)' : 'transparent',
+    color: active ? 'var(--accent)' : 'rgba(232,234,246,0.65)',
+    fontFamily: 'Exo 2, sans-serif',
+    fontSize: 12,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    transition: 'all 0.15s',
+    borderRadius: '0 6px 6px 0',
+  })
+
+  const countBadgeStyle: React.CSSProperties = {
+    background: 'rgba(0,229,255,0.12)',
+    color: 'var(--accent)',
+    borderRadius: 10,
+    padding: '1px 7px',
+    fontSize: 10,
+    fontFamily: 'Orbitron, monospace',
   }
 
   async function handleSaveCard() {
@@ -1124,6 +1260,44 @@ function KpiTab() {
 
   const totalWeight = card?.total_weight ?? (card?.indicators || []).reduce((s: number, ci: any) => s + (ci.weight || 0), 0)
 
+  function openCreateWizard(prefilledPos?: any) {
+    setWizardPrefilledPos(prefilledPos || null)
+    setWizardData({
+      role_name: prefilledPos?.role || '',
+      pos_id: prefilledPos?.pos_id ? String(prefilledPos.pos_id) : '',
+      unit: prefilledPos?.unit || '',
+      copy_mode: 'empty',
+      copy_from_card_id: '',
+    })
+    setWizardStep(1)
+    setShowWizard(true)
+  }
+
+  async function handleWizardSave() {
+    if (!wizardData.role_name || !wizardData.pos_id) return
+    setWizardSaving(true)
+    try {
+      const posIdNum = parseInt(wizardData.pos_id)
+      const roleId = wizardPrefilledPos?.role_id || `POS_${wizardData.pos_id}`
+      const payload: any = {
+        pos_id: posIdNum,
+        role_id: roleId,
+        role_name: wizardData.role_name,
+        unit: wizardData.unit || undefined,
+      }
+      if (wizardData.copy_mode === 'copy' && wizardData.copy_from_card_id) {
+        payload.copy_from_card_id = wizardData.copy_from_card_id
+      }
+      await api.post('/admin/kpi-cards/', payload)
+      await loadCards()
+      setShowWizard(false)
+      setSelectedPosId(wizardData.pos_id)
+      setSelectedUnit('all')
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка создания карточки')
+    } finally { setWizardSaving(false) }
+  }
+
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 64 }}>
       <div className="loader-ring" style={{ margin: '0 auto' }} />
@@ -1134,168 +1308,242 @@ function KpiTab() {
   return (
     <>
     <div className="fade-up">
-      <div className="section-title-main" style={{ marginBottom: 16 }}>Карточка должности</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div className="section-title-main" style={{ margin: 0 }}>Карточки должностей</div>
+        <button
+          className="cyber-btn"
+          style={{ fontSize: 12, padding: '8px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)' }}
+          onClick={() => openCreateWizard()}
+        >
+          + Создать карточку
+        </button>
+      </div>
 
-      <select
-        style={{ ...SEL, minWidth: 300, marginBottom: 24 }}
-        value={selectedPosId}
-        onChange={e => { setSelectedPosId(e.target.value); setEditMode(false) }}
-      >
-        <option value="">— Выберите должность —</option>
-        {Object.entries(cardsByUnit).map(([unit, unitCards]: [string, any]) => (
-          <optgroup key={unit} label={unit}>
-            {unitCards.map((c: any) => (
-              <option key={c.pos_id} value={c.pos_id}>{c.role_name || `pos_id=${c.pos_id}`}</option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-
-      {cardLoading && (
-        <div style={{ textAlign: 'center', padding: 32 }}>
-          <div className="loader-ring" style={{ margin: '0 auto' }} />
-        </div>
-      )}
-
-      {!cardLoading && card && (
-        <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>
-                {card.role_name}
-              </span>
-              <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
-                pos_id={card.pos_id} · v{card.version} · {card.status}
-                {card.unit && ` · ${card.unit}`}
-              </span>
+      <div style={{ display: 'flex', gap: 0, minHeight: 600 }}>
+        {/* Левый сайдбар */}
+        <div style={{ width: 220, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+          <div onClick={() => { setSelectedUnit('all'); setSelectedPosId(''); setCard(null) }} style={sidebarItemStyle(selectedUnit === 'all')}>
+            <span>📋 Все карточки</span>
+            <span style={countBadgeStyle}>{cards.length}</span>
+          </div>
+          <div onClick={() => { setSelectedUnit('missing'); setSelectedPosId(''); setCard(null) }} style={sidebarItemStyle(selectedUnit === 'missing')}>
+            <span>⚠️ Без карточки</span>
+            <span style={{ ...countBadgeStyle, color: 'var(--warn)', background: 'rgba(255,184,0,0.12)' }}>{positionsWithoutCards.length}</span>
+          </div>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4 }} />
+          {Object.keys(cardsByUnit).sort().map(unit => (
+            <div key={unit} onClick={() => { setSelectedUnit(unit); setSelectedPosId(''); setCard(null) }} style={sidebarItemStyle(selectedUnit === unit)}>
+              <span style={{ fontSize: 11 }}>{unit}</span>
+              <span style={countBadgeStyle}>{cardsByUnit[unit].length}</span>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {editMode ? (
-                <>
-                  <button className="action-btn btn-fill" style={{ fontSize: 12 }} onClick={handleSaveCard} disabled={savingCard}>
-                    {savingCard ? '...' : '💾 Сохранить'}
-                  </button>
-                  <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => { setEditMode(false); setEditedIndicators([...(card.indicators || [])]) }}>
-                    ✕ Отмена
-                  </button>
-                  <button className="cyber-btn" style={{ fontSize: 12, padding: '4px 12px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)' }} onClick={() => setShowAddModal(true)}>
-                    + Добавить показатель
-                  </button>
-                </>
-              ) : (
-                <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => setEditMode(true)}>
-                  ✏️ Редактировать
-                </button>
+          ))}
+        </div>
+
+        {/* Правая область */}
+        <div style={{ flex: 1, paddingLeft: 20 }}>
+          {/* Список карточек (когда ни одна не открыта) */}
+          {!card && !cardLoading && (
+            <div>
+              {/* Карточки существующих должностей */}
+              {selectedUnit !== 'missing' && displayedCards.map((c: any) => (
+                <div
+                  key={c.pos_id}
+                  className="cyber-card"
+                  style={{ marginBottom: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                  onClick={() => { setSelectedPosId(String(c.pos_id)); setEditMode(false) }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{c.role_name || `pos_id=${c.pos_id}`}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 3, fontFamily: 'Orbitron, monospace' }}>
+                      pos_id={c.pos_id} · v{c.version} · {c.unit || ''}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span className={STATUS_BADGE[c.status] || 'badge badge-dim'}>{c.status}</span>
+                    <button className="action-btn btn-view" style={{ fontSize: 11, padding: '4px 12px' }} onClick={e => { e.stopPropagation(); setSelectedPosId(String(c.pos_id)); setEditMode(false) }}>
+                      Открыть →
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Должности без карточки */}
+              {selectedUnit === 'missing' && (
+                positionsWithoutCards.length === 0
+                  ? <div className="cyber-card" style={{ textAlign: 'center', color: 'var(--accent3)', padding: 32 }}>✅ У всех должностей есть карточки</div>
+                  : positionsWithoutCards.map((p: any) => (
+                    <div key={p.pos_id} className="cyber-card" style={{ marginBottom: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderColor: 'rgba(255,184,0,0.2)' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontWeight: 600, fontSize: 14 }}>{p.role}</span>
+                          <span className="badge badge-warn" style={{ fontSize: 10 }}>⚠️ новая</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 3, fontFamily: 'Orbitron, monospace' }}>
+                          pos_id={p.pos_id} · {p.unit}
+                        </div>
+                      </div>
+                      <button
+                        className="cyber-btn"
+                        style={{ fontSize: 12, padding: '6px 14px', background: 'rgba(255,184,0,0.1)', border: '1px solid rgba(255,184,0,0.4)', color: 'var(--warn)' }}
+                        onClick={() => openCreateWizard(p)}
+                      >
+                        + Создать карточку →
+                      </button>
+                    </div>
+                  ))
+              )}
+
+              {selectedUnit !== 'missing' && displayedCards.length === 0 && (
+                <div className="cyber-card" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>
+                  Нет карточек
+                </div>
               )}
             </div>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {editMode && <th style={{ ...TH, width: 64 }}></th>}
-                <th style={TH}>Показатель</th>
-                <th style={TH}>Тип</th>
-                <th style={TH}>Общий</th>
-                <th style={{ ...TH, textAlign: 'right' }}>Вес</th>
-                {editMode && <th style={{ ...TH, width: 40 }}></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(editMode ? editedIndicators : (card.indicators || [])).map((ci: any, idx: number) => (
-                <tr key={ci.indicator_id ?? idx}
-                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  {editMode && (
-                    <td style={{ ...TD, width: 64 }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <button onClick={() => swapOrder(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
-                        <button onClick={() => swapOrder(idx, 1)} disabled={idx === editedIndicators.length - 1} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === editedIndicators.length - 1 ? 0.3 : 1 }}>▼</button>
-                      </div>
-                    </td>
-                  )}
-                  <td style={{ ...TD, fontWeight: 600 }}>{ci.indicator_name || '—'}</td>
-                  <td style={TD}>
-                    {ci.indicator_formula_type && (
-                      <span style={{
-                        background: `${TYPE_COLORS[ci.indicator_formula_type] || '#888'}22`,
-                        color: TYPE_COLORS[ci.indicator_formula_type] || '#888',
-                        border: `1px solid ${TYPE_COLORS[ci.indicator_formula_type] || '#888'}55`,
-                        borderRadius: 6, padding: '2px 8px', fontSize: 11, fontFamily: 'Orbitron, monospace',
-                      }}>
-                        {TYPE_LABELS[ci.indicator_formula_type] || ci.indicator_formula_type}
-                      </span>
-                    )}
-                  </td>
-                  <td style={TD}>
-                    {ci.is_common && <span className="badge badge-success">Общий</span>}
-                  </td>
-                  <td style={{ ...TD, textAlign: 'right' }}>
-                    {editMode ? (
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={ci.weight}
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 0
-                          setEditedIndicators(prev => prev.map((x, i) => i === idx ? { ...x, weight: val } : x))
-                        }}
-                        style={{ width: 60, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 14, fontWeight: 700, padding: '4px 8px', textAlign: 'right' }}
-                      />
-                    ) : (
-                      <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 15, fontWeight: 700, color: 'var(--accent3)' }}>
-                        {ci.weight}%
-                      </span>
-                    )}
-                  </td>
-                  {editMode && (
-                    <td style={{ ...TD, width: 40 }}>
-                      {!ci.is_common && (
-                        deleteConfirm === ci.indicator_id ? (
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => handleRemoveIndicator(ci.indicator_id)} style={{ background: 'rgba(255,59,92,0.15)', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer', fontSize: 10, padding: '2px 6px' }}>Да</button>
-                            <button onClick={() => setDeleteConfirm(null)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4, color: 'var(--text-dim)', cursor: 'pointer', fontSize: 10, padding: '2px 6px' }}>Нет</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setDeleteConfirm(ci.indicator_id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16, lineHeight: 1, opacity: 0.7 }}>🗑</button>
-                        )
-                      )}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{
-            padding: '12px 20px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12,
-          }}>
-            <span style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text-dim)' }}>
-              Сумма весов:
-            </span>
-            <span style={{
-              fontFamily: 'Orbitron, monospace', fontSize: 18, fontWeight: 700,
-              color: (editMode ? editedWeight : totalWeight) === 100 ? 'var(--accent3)' : 'var(--danger)',
-              textShadow: (editMode ? editedWeight : totalWeight) === 100 ? '0 0 10px var(--accent3)' : '0 0 10px var(--danger)',
-            }}>
-              {editMode ? editedWeight : totalWeight}%
-            </span>
-            {(editMode ? editedWeight : totalWeight) === 100
-              ? <span className="badge badge-success">✓ Верно</span>
-              : <span className="badge badge-fail">≠ 100%</span>
-            }
-          </div>
-        </div>
-      )}
+          )}
 
-      {!cardLoading && selectedPosId && !card && (
-        <div className="cyber-card" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 32 }}>
-          Карточка не найдена
+          {cardLoading && (
+            <div style={{ textAlign: 'center', padding: 32 }}>
+              <div className="loader-ring" style={{ margin: '0 auto' }} />
+            </div>
+          )}
+
+          {!cardLoading && card && (
+            <div>
+              <button
+                onClick={() => { setCard(null); setSelectedPosId(''); setEditMode(false) }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                ← Назад к списку
+              </button>
+              <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>
+                      {card.role_name}
+                    </span>
+                    <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
+                      pos_id={card.pos_id} · v{card.version} · {card.status}
+                      {card.unit && ` · ${card.unit}`}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {editMode ? (
+                      <>
+                        <button className="action-btn btn-fill" style={{ fontSize: 12 }} onClick={handleSaveCard} disabled={savingCard}>
+                          {savingCard ? '...' : '💾 Сохранить'}
+                        </button>
+                        <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => { setEditMode(false); setEditedIndicators([...(card.indicators || [])]) }}>
+                          ✕ Отмена
+                        </button>
+                        <button className="cyber-btn" style={{ fontSize: 12, padding: '4px 12px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)' }} onClick={() => setShowAddModal(true)}>
+                          + Добавить показатель
+                        </button>
+                      </>
+                    ) : (
+                      <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => setEditMode(true)}>
+                        ✏️ Редактировать
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      {editMode && <th style={{ ...TH, width: 64 }}></th>}
+                      <th style={TH}>Показатель</th>
+                      <th style={TH}>Тип</th>
+                      <th style={TH}>Общий</th>
+                      <th style={{ ...TH, textAlign: 'right' }}>Вес</th>
+                      {editMode && <th style={{ ...TH, width: 40 }}></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(editMode ? editedIndicators : (card.indicators || [])).map((ci: any, idx: number) => (
+                      <tr key={ci.indicator_id ?? idx}
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        {editMode && (
+                          <td style={{ ...TD, width: 64 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              <button onClick={() => swapOrder(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                              <button onClick={() => swapOrder(idx, 1)} disabled={idx === editedIndicators.length - 1} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === editedIndicators.length - 1 ? 0.3 : 1 }}>▼</button>
+                            </div>
+                          </td>
+                        )}
+                        <td style={{ ...TD, fontWeight: 600 }}>{ci.indicator_name || '—'}</td>
+                        <td style={TD}>
+                          {ci.indicator_formula_type && (
+                            <span style={{
+                              background: `${TYPE_COLORS[ci.indicator_formula_type] || '#888'}22`,
+                              color: TYPE_COLORS[ci.indicator_formula_type] || '#888',
+                              border: `1px solid ${TYPE_COLORS[ci.indicator_formula_type] || '#888'}55`,
+                              borderRadius: 6, padding: '2px 8px', fontSize: 11, fontFamily: 'Orbitron, monospace',
+                            }}>
+                              {TYPE_LABELS[ci.indicator_formula_type] || ci.indicator_formula_type}
+                            </span>
+                          )}
+                        </td>
+                        <td style={TD}>
+                          {ci.is_common && <span className="badge badge-success">Общий</span>}
+                        </td>
+                        <td style={{ ...TD, textAlign: 'right' }}>
+                          {editMode ? (
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={ci.weight}
+                              onChange={e => {
+                                const val = parseInt(e.target.value) || 0
+                                setEditedIndicators(prev => prev.map((x, i) => i === idx ? { ...x, weight: val } : x))
+                              }}
+                              style={{ width: 60, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 14, fontWeight: 700, padding: '4px 8px', textAlign: 'right' }}
+                            />
+                          ) : (
+                            <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 15, fontWeight: 700, color: 'var(--accent3)' }}>
+                              {ci.weight}%
+                            </span>
+                          )}
+                        </td>
+                        {editMode && (
+                          <td style={{ ...TD, width: 40 }}>
+                            {!ci.is_common && (
+                              deleteConfirm === ci.indicator_id ? (
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  <button onClick={() => handleRemoveIndicator(ci.indicator_id)} style={{ background: 'rgba(255,59,92,0.15)', border: '1px solid var(--danger)', borderRadius: 4, color: 'var(--danger)', cursor: 'pointer', fontSize: 10, padding: '2px 6px' }}>Да</button>
+                                  <button onClick={() => setDeleteConfirm(null)} style={{ background: 'none', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 4, color: 'var(--text-dim)', cursor: 'pointer', fontSize: 10, padding: '2px 6px' }}>Нет</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setDeleteConfirm(ci.indicator_id)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16, lineHeight: 1, opacity: 0.7 }}>🗑</button>
+                              )
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text-dim)' }}>Сумма весов:</span>
+                  <span style={{
+                    fontFamily: 'Orbitron, monospace', fontSize: 18, fontWeight: 700,
+                    color: (editMode ? editedWeight : totalWeight) === 100 ? 'var(--accent3)' : 'var(--danger)',
+                    textShadow: (editMode ? editedWeight : totalWeight) === 100 ? '0 0 10px var(--accent3)' : '0 0 10px var(--danger)',
+                  }}>
+                    {editMode ? editedWeight : totalWeight}%
+                  </span>
+                  {(editMode ? editedWeight : totalWeight) === 100
+                    ? <span className="badge badge-success">✓ Верно</span>
+                    : <span className="badge badge-fail">≠ 100%</span>
+                  }
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
 
     {/* ── МОДАЛЬНОЕ ОКНО: ДОБАВИТЬ ПОКАЗАТЕЛЬ ── */}
@@ -1370,6 +1618,123 @@ function KpiTab() {
         </div>
       </div>
     )}
+
+    {/* ── МАСТЕР СОЗДАНИЯ КАРТОЧКИ ── */}
+    {showWizard && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        onClick={e => { if (e.target === e.currentTarget) setShowWizard(false) }}
+      >
+        <div className="cyber-card" style={{ maxWidth: 520, width: '100%', padding: 0, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+          {/* Шапка */}
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>НОВАЯ KPI-КАРТОЧКА</div>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>Шаг {wizardStep} из 2</div>
+            </div>
+            <button onClick={() => setShowWizard(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+
+          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {wizardStep === 1 && (
+              <>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>НАЗВАНИЕ ДОЛЖНОСТИ *</label>
+                  <textarea
+                    rows={2}
+                    value={wizardData.role_name}
+                    onChange={e => setWizardData(d => ({ ...d, role_name: e.target.value }))}
+                    style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>POS_ID *</label>
+                    <input
+                      type="number"
+                      value={wizardData.pos_id}
+                      onChange={e => setWizardData(d => ({ ...d, pos_id: e.target.value }))}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 14, padding: '8px 12px', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОДРАЗДЕЛЕНИЕ</label>
+                    <select
+                      value={wizardData.unit}
+                      onChange={e => setWizardData(d => ({ ...d, unit: e.target.value }))}
+                      style={{ width: '100%', background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, cursor: 'pointer', boxSizing: 'border-box' }}
+                    >
+                      <option value="">— не указано —</option>
+                      {Object.keys(cardsByUnit).sort().map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {wizardStep === 2 && (
+              <>
+                <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 8 }}>
+                  Карточка для: <strong style={{ color: 'var(--text)' }}>{wizardData.role_name}</strong> (pos_id={wizardData.pos_id})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 8, border: `1px solid ${wizardData.copy_mode === 'empty' ? 'rgba(0,229,255,0.4)' : 'rgba(255,255,255,0.1)'}`, background: wizardData.copy_mode === 'empty' ? 'rgba(0,229,255,0.06)' : 'transparent', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                    <input type="radio" name="copy_mode" value="empty" checked={wizardData.copy_mode === 'empty'} onChange={() => setWizardData(d => ({ ...d, copy_mode: 'empty' }))} />
+                    Пустая карточка
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 8, border: `1px solid ${wizardData.copy_mode === 'copy' ? 'rgba(0,229,255,0.4)' : 'rgba(255,255,255,0.1)'}`, background: wizardData.copy_mode === 'copy' ? 'rgba(0,229,255,0.06)' : 'transparent', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                    <input type="radio" name="copy_mode" value="copy" checked={wizardData.copy_mode === 'copy'} onChange={() => setWizardData(d => ({ ...d, copy_mode: 'copy' }))} />
+                    Скопировать из существующей карточки
+                  </label>
+                </div>
+                {wizardData.copy_mode === 'copy' && (
+                  <select
+                    value={wizardData.copy_from_card_id}
+                    onChange={e => setWizardData(d => ({ ...d, copy_from_card_id: e.target.value }))}
+                    style={{ width: '100%', background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, cursor: 'pointer', boxSizing: 'border-box' }}
+                  >
+                    <option value="">— Выберите карточку-источник —</option>
+                    {cards.map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.role_name} (pos={c.pos_id})</option>
+                    ))}
+                  </select>
+                )}
+              </>
+            )}
+          </div>
+
+          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            {wizardStep === 1 ? (
+              <>
+                <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={() => setShowWizard(false)}>Отмена</button>
+                <button
+                  className="action-btn btn-fill"
+                  style={{ fontSize: 13 }}
+                  onClick={() => setWizardStep(2)}
+                  disabled={!wizardData.role_name || !wizardData.pos_id}
+                >
+                  Далее →
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={() => setWizardStep(1)}>← Назад</button>
+                <button
+                  className="action-btn btn-fill"
+                  style={{ fontSize: 13 }}
+                  onClick={handleWizardSave}
+                  disabled={wizardSaving || (wizardData.copy_mode === 'copy' && !wizardData.copy_from_card_id)}
+                >
+                  {wizardSaving ? '...' : '✓ Создать карточку'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
     </>
   )
 }
@@ -1379,16 +1744,16 @@ function KpiTab() {
 // ════════════════════════════════════════════════════════════════════
 
 const INDICATOR_GROUPS_LIST = [
-  { id: 'all', label: 'Все' },
-  { id: 'Общие показатели', label: 'Общие показатели' },
-  { id: 'Проектная деятельность', label: 'Проектная деятельность' },
-  { id: 'Аналитическая деятельность', label: 'Аналитическая деятельность' },
-  { id: 'Закупочная деятельность', label: 'Закупочная деятельность' },
-  { id: 'Правовое обеспечение', label: 'Правовое обеспечение' },
-  { id: 'Документооборот', label: 'Документооборот' },
-  { id: 'Информационные технологии', label: 'Информационные технологии' },
-  { id: 'Организационное обеспечение', label: 'Организационное обеспечение' },
-  { id: 'Прочие показатели', label: 'Прочие показатели' },
+  { id: 'all', label: '📋 Все' },
+  { id: 'Общие показатели', label: '⭐ Общие показатели' },
+  { id: 'Проектная деятельность', label: '🏗 Проектная деятельность' },
+  { id: 'Аналитическая деятельность', label: '📊 Аналитическая деятельность' },
+  { id: 'Закупочная деятельность', label: '🛒 Закупочная деятельность' },
+  { id: 'Правовое обеспечение', label: '⚖️ Правовое обеспечение' },
+  { id: 'Документооборот', label: '📄 Документооборот' },
+  { id: 'Информационные технологии', label: '💻 Информационные технологии' },
+  { id: 'Организационное обеспечение', label: '🏢 Организационное обеспечение' },
+  { id: 'Прочие показатели', label: '📌 Прочие показатели' },
 ]
 
 function KpiIndicatorsTab() {
@@ -1399,6 +1764,9 @@ function KpiIndicatorsTab() {
   const [editingIndicator, setEditingIndicator] = useState<any>(null)
   const [editForm, setEditForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [createForm, setCreateForm] = useState({ name: '', formula_type: 'binary_manual', indicator_group: 'Прочие показатели', is_common: false, criterion: '', numerator_label: '', denominator_label: '', cumulative: false })
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     api.get('/kpi/indicators?status=all')
@@ -1469,6 +1837,31 @@ function KpiIndicatorsTab() {
     } finally { setSaving(false) }
   }
 
+  async function handleCreate() {
+    if (!createForm.name || !createForm.criterion) return
+    setCreating(true)
+    try {
+      const payload: any = {
+        name: createForm.name,
+        formula_type: createForm.formula_type,
+        indicator_group: createForm.indicator_group,
+        is_common: createForm.is_common,
+        criterion: createForm.criterion,
+      }
+      if (['threshold', 'multi_threshold', 'quarterly_threshold'].includes(createForm.formula_type)) {
+        if (createForm.numerator_label) payload.numerator_label = createForm.numerator_label
+        if (createForm.denominator_label) payload.denominator_label = createForm.denominator_label
+        payload.cumulative = createForm.cumulative
+      }
+      const res = await api.post('/kpi/indicators', payload)
+      setIndicators(prev => [res.data, ...prev])
+      setShowCreateModal(false)
+      setCreateForm({ name: '', formula_type: 'binary_manual', indicator_group: 'Прочие показатели', is_common: false, criterion: '', numerator_label: '', denominator_label: '', cumulative: false })
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка создания')
+    } finally { setCreating(false) }
+  }
+
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 64 }}>
       <div className="loader-ring" style={{ margin: '0 auto' }} />
@@ -1519,18 +1912,27 @@ function KpiIndicatorsTab() {
 
         {/* Основная область */}
         <div style={{ flex: 1, paddingLeft: 20 }}>
-          <input
-            type="text"
-            placeholder="Поиск по названию..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              width: '100%', marginBottom: 16,
-              background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)',
-              borderRadius: 8, color: 'var(--text)', padding: '8px 14px',
-              fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box',
-            }}
-          />
+          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+            <input
+              type="text"
+              placeholder="Поиск по названию..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                flex: 1,
+                background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)',
+                borderRadius: 8, color: 'var(--text)', padding: '8px 14px',
+                fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none',
+              }}
+            />
+            <button
+              className="cyber-btn"
+              style={{ fontSize: 12, padding: '8px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)', whiteSpace: 'nowrap' }}
+              onClick={() => setShowCreateModal(true)}
+            >
+              + Добавить показатель
+            </button>
+          </div>
 
           <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1818,6 +2220,133 @@ function KpiIndicatorsTab() {
             </button>
             <button className="action-btn btn-fill" style={{ fontSize: 13 }} onClick={handleSave} disabled={saving}>
               {saving ? '...' : 'Сохранить'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── МОДАЛЬНОЕ ОКНО: СОЗДАТЬ ПОКАЗАТЕЛЬ ── */}
+    {showCreateModal && (
+      <div
+        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        onClick={e => { if (e.target === e.currentTarget) setShowCreateModal(false) }}
+      >
+        <div
+          className="cyber-card"
+          style={{ maxWidth: 620, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 0, position: 'relative' }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 1 }}>
+            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent3)' }}>НОВЫЙ ПОКАЗАТЕЛЬ</div>
+            <button onClick={() => setShowCreateModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+          </div>
+
+          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Тип */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТИП *</label>
+              <select
+                value={createForm.formula_type}
+                onChange={e => setCreateForm(f => ({ ...f, formula_type: e.target.value }))}
+                style={{ background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, width: '100%', cursor: 'pointer' }}
+              >
+                {Object.entries(TYPE_LABELS).map(([val, lbl]) => (
+                  <option key={val} value={val}>{lbl} ({val})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Название */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>НАЗВАНИЕ *</label>
+              <textarea
+                rows={2}
+                value={createForm.name}
+                onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
+                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Группа + Общий */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ГРУППА</label>
+                <select
+                  value={createForm.indicator_group}
+                  onChange={e => setCreateForm(f => ({ ...f, indicator_group: e.target.value }))}
+                  style={{ background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, width: '100%', cursor: 'pointer' }}
+                >
+                  {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all').map(g => (
+                    <option key={g.id} value={g.id}>{g.label}</option>
+                  ))}
+                </select>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={createForm.is_common}
+                  onChange={e => setCreateForm(f => ({ ...f, is_common: e.target.checked }))}
+                />
+                Общий показатель
+              </label>
+            </div>
+
+            {/* Критерий */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ *</label>
+              <textarea
+                rows={3}
+                value={createForm.criterion}
+                onChange={e => setCreateForm(f => ({ ...f, criterion: e.target.value }))}
+                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {/* Числовые поля — только для threshold типов */}
+            {['threshold', 'multi_threshold', 'quarterly_threshold'].includes(createForm.formula_type) && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЧИСЛИТЕЛЬ</label>
+                    <input
+                      value={createForm.numerator_label}
+                      onChange={e => setCreateForm(f => ({ ...f, numerator_label: e.target.value }))}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЗНАМЕНАТЕЛЬ</label>
+                    <input
+                      value={createForm.denominator_label}
+                      onChange={e => setCreateForm(f => ({ ...f, denominator_label: e.target.value }))}
+                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}>
+                  <input
+                    type="checkbox"
+                    checked={createForm.cumulative}
+                    onChange={e => setCreateForm(f => ({ ...f, cumulative: e.target.checked }))}
+                  />
+                  Нарастающим итогом
+                </label>
+              </>
+            )}
+          </div>
+
+          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--card)' }}>
+            <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={() => setShowCreateModal(false)}>
+              Отмена
+            </button>
+            <button
+              className="action-btn btn-fill"
+              style={{ fontSize: 13 }}
+              onClick={handleCreate}
+              disabled={creating || !createForm.name || !createForm.criterion}
+            >
+              {creating ? '...' : '+ Создать показатель'}
             </button>
           </div>
         </div>
