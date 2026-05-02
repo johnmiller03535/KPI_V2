@@ -1,6 +1,6 @@
 # CLAUDE.md — KPI Портал ГКУ МО «РЦТ»
 
-> Обновляется в конце каждой сессии. Последнее обновление: 2026-04-18 (шаг E: PDF-шаблон kpi_results, дашборд, финальные фиксы)
+> Обновляется в конце каждой сессии. Последнее обновление: 2026-05-02 (шаг J: редизайн admin-панели — структура, KPI-карточки, подчинённость)
 
 ## О проекте
 
@@ -20,7 +20,7 @@
 | Бот | aiogram 3 |
 | Планировщик | APScheduler |
 | PDF | WeasyPrint |
-| AI | GigaChat (основной) / Gemini (резервный) |
+| AI | YandexGPT (primary) / GigaChat (fallback, 401) |
 | Контейнеры | Docker Compose |
 | Авторизация | JWT + Redmine API (единая учётка) |
 
@@ -46,6 +46,13 @@ kpi-portal/
 ├── frontend/         ← Next.js 14
 │   └── src/app/      ← App Router
 ├── nginx/            ← reverse proxy
+├── docs/             ← BL-документы
+│   ├── BL_subordination.md
+│   ├── BL_kpi_cards.md
+│   ├── BL_kpi_constructor.md
+│   ├── BL_ai_assessment.md
+│   ├── BL_numeric_kpi.md
+│   └── BL_admin_structure.md   ← новый (2026-05-02)
 ├── reference/        ← справочные файлы (не в коде)
 │   ├── KPI_Mapping.xlsx
 │   ├── subordination.json
@@ -73,496 +80,209 @@ kpi-portal/
 | C | API binary_manual + KPI-форма Dark Cyber | ✅ |
 | D | Форма руководителя + PDF таблица KPI | ✅ |
 | E | Дашборд Dark Cyber + сквозной цикл | ✅ |
+| F | Смена AI: YandexGPT primary + GigaChat fallback | ✅ |
+| G | KPI-конструктор: БД + API + UI + импорт xlsx | ✅ |
+| H | Подчинённость: таб + импорт из People | ✅ |
+| J | Редизайн admin: дерево подчинённости, сайдбар карточек, wizard, «+ Показатель» | ✅ |
 
 ## Ключевые решения (зафиксированные)
 
-- Redmine — единственный источник истины для пользователей и задач
+- Redmine — единственный источник истины для пользователей, задач и **структуры организации**
+- Должности и подразделения создаются только в Redmine, портал обогащает (KPI-карточки, подчинённость)
 - Авторизация: логин/пароль Redmine → JWT (access 15min, refresh 7d)
 - БД — только для состояния приложения, кэша и аудита
 - PDF через WeasyPrint (HTML-шаблон → PDF, печатается на любой ОС)
 - Уведомления только через Telegram
 - Синхронизация с Redmine — еженедельно (APScheduler)
+- Изменения KPI-карточек вступают в силу со **следующего** периода
+
+## KPI-конструктор (шаг G, апрель–май 2026)
+
+### БД — 5 таблиц конструктора
+- `kpi_indicators` — библиотека показателей (126 шт, 3 общих is_common)
+- `kpi_criteria` — критерии и формулы показателей (189 шт)
+- `kpi_role_cards` — карточки должностей (91 шт)
+- `kpi_role_card_indicators` — показатели в карточке (261 привязка)
+- `kpi_change_requests` — запросы на изменение
+
+### Импорт xlsx
+- Источник: `reference/KPI_Mapping.xlsx`
+- Результат: 126 показателей, 189 критериев, 91 карточка, 261 привязка
+- Ровно 3 общих показателя (is_common=true): исполнительская дисциплина, трудовой распорядок, охрана труда
+- Скрипт: `backend/app/services/kpi_import_service.py`
+
+### API конструктора (backend/app/api/admin.py)
+- `GET /api/admin/indicators/` — список показателей с фильтрами
+- `POST /api/admin/indicators/` — создать показатель
+- `PATCH /api/admin/indicators/{id}` — редактировать
+- `GET /api/admin/kpi-cards/` — список карточек
+- `POST /api/admin/kpi-cards/` — создать карточку (поддерживает `copy_from_card_id`)
+- `GET /api/admin/kpi-cards/positions-without-cards` — должности без карточки
+- `GET /api/admin/subordination` — матрица подчинения (включает `has_kpi_card: bool`)
+
+## Шаг J — Редизайн admin-панели (2026-05-02)
+
+### ИЗМЕНЕНИЕ 1 — Таб «Подчинённость»: вид «Дерево»
+- Переключатель [Список] / [Дерево] рядом с кнопками «Обновить» / «Импорт из People»
+- Дерево: иерархия по подразделениям, отступы по уровням, бейджи статуса карточки
+- Бейдж `✅ карточка` (зелёный) / `⚠️ нет карточки` (жёлтый, кликабельный → KPI-карточки)
+- После импорта: баннер «Найдено N должностей без карточки: [список]»
+- Backend: `GET /api/admin/subordination` расширен полем `has_kpi_card`
+
+### ИЗМЕНЕНИЕ 2 — Таб «KPI-карточки»: сайдбар по подразделениям
+- Убран одинокий дропдаун, заменён двухколоночным layout (как KPI-показатели)
+- Левый сайдбар: подразделения со счётчиками + пункт «⚠️ Без карточки»
+- Правая часть: карточки подразделения, кнопки «Открыть →» / «Создать карточку →»
+- Backend: `GET /api/admin/kpi-cards/positions-without-cards`
+
+### ИЗМЕНЕНИЕ 3 — Wizard «Создать карточку»
+- Кнопка `[+ Создать карточку]` в правом верхнем углу таба
+- Шаг 1: название, подразделение, код должности
+- Шаг 2: пустая карточка ИЛИ скопировать с существующей
+- После создания — карточка сразу открывается в режиме редактирования
+- Backend: `POST /api/admin/kpi-cards/` с поддержкой `copy_from_card_id`
+
+### ИЗМЕНЕНИЕ 4 — Таб «KPI-показатели»: кнопка «+ Добавить показатель»
+- Кнопка рядом со строкой поиска
+- Форма адаптируется под тип (binary показывает только критерий, threshold — числитель/знаменатель/пороги)
+- Исправлен счётчик: показывает 126 вместо 124, неактивные показываются приглушённым цветом
+
+### Новый BL-документ
+- `docs/BL_admin_structure.md` — принципы управления структурой, жизненный цикл при изменениях, правила карточек и подчинённости
+
+## AI-провайдеры (актуальная конфигурация)
+
+| Провайдер | Статус | Ключ |
+|---|---|---|
+| YandexGPT (PRIMARY) | ✅ Работает | Из aistudio.yandex.ru |
+| GigaChat (FALLBACK) | ❌ 401, ключ устарел | Обновить на developers.sber.ru |
+| Заглушка | ✅ Работает | Автоматически |
+
+**Важно:** YANDEX_API_KEY получать ТОЛЬКО через aistudio.yandex.ru → API Keys.
+
+## Переменные окружения (актуальные)
+
+```env
+REDMINE_URL=https://kkp.rm.mosreg.ru
+REDMINE_API_KEY=...
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_DB=kpi_db
+POSTGRES_USER=kpi_user
+POSTGRES_PASSWORD=...
+JWT_SECRET_KEY=...
+YANDEX_API_KEY=...        # из aistudio.yandex.ru
+YANDEX_FOLDER_ID=b1gjo5d34h6tr4ijadq6
+GIGACHAT_API_KEY=...      # из developers.sber.ru (нужно обновить)
+TELEGRAM_BOT_TOKEN=...
+FINANCE_TELEGRAM_IDS=...
+FRONTEND_URL=...
+BACKEND_URL=...
+```
+
+## Известные баги
+
+| # | Описание | Модуль | Статус |
+|---|---|---|---|
+| 1 | Прогресс-бар в черновике = 100% | Dashboard | ❌ Открыт |
+| 2 | GigaChat fallback 401 (ключ устарел) | AI | ❌ Открыт |
+
+## Открытые задачи (по приоритету)
+
+### 🔴 Критичные
+1. Числовые KPI — реализовать ввод числитель/знаменатель в форме сотрудника
+2. Редактор показателей — заполнить `numerator_label`, `denominator_label` для threshold-типов
+3. Telegram-уведомления — проверить что доходят
+
+### 🟡 Средние
+4. Тестирование на реальных сотрудниках (создать период для всех)
+5. Роль HR — добавить в систему
+6. Инструкция для сотрудников по ведению трудозатрат в Redmine
+7. Обновить GigaChat ключ (fallback)
+
+### 🟢 Низкие
+8. Activity types → KPI маппинг (шаг I)
+9. Уведомления при изменении карточки KPI
+
+## Матрица подчинённости (верхний уровень)
+
+```
+РУК_ПЕРЗ_001 → ПРА_НАЧ_032, КЗА_НАЧ_042
+РУК_ЗАМД_002 → ЗПД_НАЧ_052, ЗПР_НАЧ_061
+РУК_ЗАМД_003 → ЕАС_НАЧ_019
+РУК_ЗАМД_004 → ЦТР_НАЧ_071, ААД_НАЧ_081
+ОРГ_НАЧ_005  → подчиняется директору (вне бота)
+```
+
+## Соглашения по разработке
+
+1. **Всегда** фиксировать BL перед кодом
+2. Задачи для Claude Code — отдельные .md файлы в /outputs
+3. Dark Cyber дизайн везде (cyber.css, Orbitron + Exo 2)
+4. Изменения KPI-карточек вступают со **следующего** периода
+5. `is_common` показатели меняет только HR/admin
+6. Источник трудозатрат для AI — поле `comments` в time_entries Redmine
+7. Один трекер KPI_ОТЧЁТ (id=279) для всех задач
+8. Должности/подразделения — только через Redmine + Импорт из People
 
 ## Этап 3 — Управление периодами (детали реализации)
 
 ### Модели
 - `Period` — таблица `periods`: тип (monthly/quarterly/yearly), даты, статус (draft→active→review→closed)
-- `PeriodException` — таблица `period_exceptions`: исключения сотрудников (dismissed/transferred/excluded/maternity)
+- `PeriodException` — таблица `period_exceptions`: исключения сотрудников
 
 ### API (`/api/periods/`)
 - `POST /` — создаёт период со статусом `draft` (только admin)
 - `GET /` — список с фильтрами `?status=` и `?year=`
-- `POST /{id}/create-tasks?dry_run=true` — создаёт задачи в Redmine; `dry_run` не меняет данные
+- `POST /{id}/create-tasks?dry_run=true` — создаёт задачи в Redmine
 - `POST /{id}/exceptions` / `GET /{id}/exceptions` — управление исключениями
 
-### Маппинги Redmine (временные, замена в этапе 4)
-- `DEPT_PROJECT_MAP`: department_code → Redmine project identifier (9 проектов kpi-*)
-- `dept_tracker_map`: project_id → tracker_id (fallback, первый трекер подразделения)
-- Кастомные поля: CF_PERIOD=205 (период), CF_ROLE_ID=206 (должность)
-
-### Frontend
-- `/admin/periods` — страница управления периодами (только admin)
-- `/dashboard` — ссылка «Управление периодами» для роли admin
-
-## Доработка — KPI Engine (шаги A–E, апрель 2026)
-
-### AI-провайдер
-- PRIMARY: OpenAI GPT (gpt-4o-mini), ключ OPENAI_API_KEY
-- FALLBACK: Google Gemini (gemini-1.5-flash), ключ GEMINI_API_KEY
-- ЗАГЛУШКА: score=100, confidence=50, summary="Требует ручной проверки"
-- Удалён: GigaChat
+## Доработка — KPI Engine (шаги A–E)
 
 ### KpiMappingService (backend/app/services/kpi_mapping_service.py)
-- Читает KPI_Indicators лист из KPI_Mapping.xlsx
-- 5 реальных значений formula_type:
-  * `binary_auto` — AI анализирует трудозатраты Redmine
-  * `binary_manual` — руководитель оценивает вручную (0 или 100)
-  * `threshold` — одно пороговое значение
-  * `multi_threshold` — ступенчатая оценка (несколько диапазонов)
-  * `quarterly_threshold` — пороги по кварталам
+- 5 типов formula_type: `binary_auto`, `binary_manual`, `threshold`, `multi_threshold`, `quarterly_threshold`
 - `get_kpi_structure(role_id)` → `KpiStructure { binary_auto[], binary_manual[], numeric[] }`
-- `get_kpi_structure_by_pos_id(pos_id)` — поиск по числовому pos_id из employees.position_id
 - **Важно:** `employees.position_id` хранит числовой `pos_id` (`"71"`), не `role_id` (`"ЦТР_НАЧ_071"`)
 
 ### ThresholdParser (backend/app/services/threshold_parser.py)
 - `parse_thresholds(str)` → `list[ThresholdRule]`
 - `apply_threshold(value, rules)` → `float` (score 0–100)
-- `evaluate_threshold_kpi(formula_type, thresholds, fact_value, quarter)` → `float`
 - 17 unit-тестов: `pytest backend/tests/test_threshold_parser.py`
 
 ### KpiEngineService (backend/app/services/kpi_engine_service.py)
 - `process_submission(submission_id, db)` → `KpiEngineResult`
-- Параллельный вызов AI через `asyncio.gather` (только binary_auto)
-- `partial_score` = взвешенное среднее по оценённым KPI
+- Параллельный вызов AI через `asyncio.gather`
 - Сохраняет в `submission.kpi_values` (JSONB) + `submission.ai_raw_summary`
-- `compute_score_from_kpi_values(kpi_values)` → `(partial_score, total_weight, scored_weight)`
 
-### Схемы (backend/app/schemas/kpi.py)
-- `KpiItem` — один KPI из маппинга
-- `KpiStructure` — три группы: binary_auto / binary_manual / numeric
-- `KpiResult` — результат оценки: score, confidence, summary, awaiting_manual_input, requires_review
-- `KpiEngineResult` — итог process_submission: kpi_results[], partial_score, completion_pct
-- `BinaryManualUpdate` — тело PATCH /binary-manual `{ kpi_index, score, comment }`
-- `PendingManualResponse` — ответ GET /pending-manual
+### API Submissions
+- `POST /my/{id}/generate-summary` → KpiEngineResult
+- `GET /my/{id}/score` → ScoreResponse
+- `PATCH /my/{id}` → SubmissionNumericUpdate
+- `GET /my/{id}/kpi-structure` → KpiStructure
+- `POST /my/{id}/submit` → отправка на проверку
 
-### API Submissions (backend/app/api/kpi_submissions.py)
-- `POST /my/{id}/generate-summary` → KpiEngineResult (AI + порогá + разметка)
-- `GET /my/{id}/score` → ScoreResponse (partial_score, total_weight, completion_pct)
-- `PATCH /my/{id}` → SubmissionNumericUpdate (numeric_values + binary_manual_overrides)
-- `GET /my/{id}/kpi-structure` → KpiStructure (три группы по должности)
-- `POST /my/{id}/submit` → отправка на проверку (draft/rejected → submitted)
-
-### API Review (backend/app/api/review.py)
-- `GET /{id}/pending-manual` → список binary_manual KPI с `awaiting_manual_input=True`
-- `PATCH /{id}/binary-manual` → score 0|100, пишет AuditLog, пересчитывает partial_score
-- Проверка subordination через `_get_effective_subordinate_ids` (403 если не подчинённый)
-- Идемпотентность: 409 если статус уже approved/rejected
+### API Review
+- `GET /{id}/pending-manual` → список binary_manual KPI
+- `PATCH /{id}/binary-manual` → score 0|100
+- Проверка subordination через `_get_effective_subordinate_ids`
 
 ### Frontend — Dark Cyber дизайн-система
-- `frontend/src/styles/cyber.css` — CSS custom properties + компоненты
-  * Шрифты: Orbitron (цифры/заголовки), Exo 2 (текст)
-  * Палитра: `--bg #06060f`, `--accent #00e5ff`, `--accent3 #00ff9d`, `--danger #ff3b5c`, `--warn #ffb800`
-  * Компоненты: `.cyber-card` (полоска accent сверху + glow), `.progress-bar-wrap/.fill`, `.badge-*`, `.loader-ring`
-
-### Frontend — Страницы
-- `/dashboard` — Dark Cyber карточки с прогресс-барами и счётчиками `⚡ AI · 👤 Ручных · 📊 Числовых`; умные кнопки (PDF/Просмотр/Заполнить); секция «Ожидают проверки» для руководителей
-- `/kpi/[submissionId]` — три секции: AI / числовые (debounce-ввод) / ручная оценка
-  * Баннер при пустых kpi_values; статусные баннеры submitted/approved; submit заблокирован при незаполненных numeric или пустых kpi_values
-- `/review/[submissionId]` — форма руководителя: binary_auto (read-only) / numeric (read-only) / binary_manual (кнопки ✅/❌, без перезагрузки)
-  * Модальное окно отклонения min 10 символов; «Утвердить» заблокирован при pending_manual > 0
-- `/review` — фильтры по статусу, client-side вычисление score из kpi_values, сетка команды
-
-### PDF (backend/app/services/report_service.py + kpi_report.html)
-- Основная корпоративная таблица (specific_kpis + три общих KPI) — сохранена
-- Дополнительная сводная таблица `{% if kpi_results %}` — прямой обход kpi_values
-  * Колонки: № / Показатель / Критерий / Вес / Факт+Результат / Оценка%
-  * binary_auto → AI summary; binary_manual → reviewer_comment; numeric → fact_value
-  * Итоговая строка: `total_score | int`%; сноска при `requires_review`
-- Контекст: `kpi_results`, `total_score`, `has_review_flags` — добавлены в `_build_context`
-
-### Критические фиксы (выявлены в ходе доработки)
-- `SubordinationService._to_unit`: возвращал `role_info["unit"]` вместо `role_info["role_id"]` → my-team видел 0 подчинённых
-- `_get_effective_subordinate_ids`: конвертация role_ids → pos_ids через `_role_ids_to_pos_ids()`
-- `create-tasks` не создавал `KpiSubmission` в локальной БД — исправлено в period_service.py
-
-### Актуальные переменные окружения для AI
-- `OPENAI_API_KEY` — ключ OpenAI (sk-...), основной провайдер
-- `GEMINI_API_KEY` — ключ Gemini, резервный провайдер
-- `GIGACHAT_API_KEY` — **удалён**, больше не используется
-
-## Этап 7 — Система напоминаний (детали реализации)
-
-### Модели
-- `Notification` — таблица `notifications`: получатель, тип, текст, period_id, submission_id, статус, dedup_key (unique)
-- `NotificationType`: `employee_reminder_3d/1d`, `manager_reminder_3d/1d`, `admin_no_telegram`
-- `NotificationStatus`: `pending`, `sent`, `failed`, `skipped` (нет telegram_id)
-- `dedup_key` формат: `"{type}:{recipient_redmine_id}:{period_id}:{date}"` — гарантирует одно уведомление в день
-
-### Сервис (`ReminderService`)
-- `run_daily_reminders(db)` — итерирует активные периоды; триггерит напоминания при `days_to_submit ∈ {3,1}` и `days_to_review ∈ {3,1}`
-- `_remind_employees` — все `EmployeeStatus.active` у кого нет `submitted`/`approved` отчёта за период
-- `_remind_managers` — группирует `submitted`-отчёты по `evaluator_position_id` (через `subordination_service`), находит руководителя в `employees` по `position_id`
-- `_send_notification` — проверяет `dedup_key`, при нет `telegram_id` → статус `skipped` + WARNING лог, иначе → Telegram API
-- `_notify_admin_missing_telegram` — сводка до 30 имён всем admin-пользователям у которых есть `telegram_id`
-
-### Планировщик
-- Новая задача `daily_reminders` в `scheduler.py`: `CronTrigger(hour=9, minute=0)`, timezone `Europe/Moscow`
-- Рядом с существующей задачей `employee_sync` (воскресенье 02:00 МСК)
-
-### API (`/api/notifications/`) — только admin
-- `POST /run-reminders` — ручной запуск, возвращает stats dict
-- `GET /logs?status=&limit=` — история уведомлений
-- `GET /stats` — счётчики по статусам
-
-### Миграция
-- `f7a8b9c0d1e2` — создаёт таблицу `notifications`, enums `notificationtype` и `notificationstatus`, индексы на `recipient_redmine_id` и `dedup_key`
-- Итого таблиц: 11
-
-### Frontend
-- `/admin/notifications` — страница: статистика по статусам, фильтры, лог уведомлений, кнопка ручного запуска с результатом
-- `/dashboard` — кнопка «Уведомления» (cyan) для роли `admin` рядом с «Управление периодами»
-
-## Этап 8 — Telegram-бот для руководителей (детали реализации)
-
-### Модули (`backend/app/bot/`)
-- `__init__.py` — пустой, делает директорию пакетом
-- `bot.py` — инициализация `Bot` и `Dispatcher` (aiogram 3); токен из `settings.telegram_bot_token`
-- `keyboards.py` — inline-клавиатуры: `review_keyboard(submission_id)`, `confirm_reject_keyboard`, `already_decided_keyboard`
-- `handlers.py` — роутер с хендлерами команд и callback-кнопок
-- `runner.py` — `start_bot()` / `stop_bot()`: polling-режим, запускается как `asyncio.create_task`
-
-### Команды бота
-- `/start` — приветствие с именем сотрудника (из `employees` по `telegram_id`)
-- `/portal` — ссылка на веб-портал
-- `/pending` — количество `submitted`-отчётов подчинённых (через `subordination_service`)
-- `/cancel` — отмена текущего FSM-состояния
-
-### Callback-хендлеры
-- `approve:<submission_id>` — утверждает отчёт, запускает автофинализацию (PDF + Redmine + finance TG)
-- `reject_start:<submission_id>` → FSM `RejectStates.waiting_comment` → вводит комментарий → `rejected`; при reject уведомляет сотрудника в TG
-- Идемпотентность: если статус уже не `submitted` → показывает `already_decided_keyboard`
-
-### Уведомление при submit
-- `kpi_submissions.py::submit_for_review` после `commit` вызывает `_notify_manager_about_submission`
-- Находит руководителя через `subordination_service.get_evaluator_position(position_id)`
-- Отправляет сообщение с `review_keyboard` в `manager.telegram_id`
-- Ошибки отправки логируются, но не прерывают submit
-
-### Интеграция в main.py
-- `startup`: `asyncio.create_task(start_bot())` — бот запускается в фоне вместе с FastAPI
-- `shutdown`: `await stop_bot()` — закрывает сессию бота
-
-## Этап 9 — Панель администратора (детали реализации)
-
-### API (`/api/admin/`) — только admin
-- `GET /overview` — статистика по организации: всего/активных/уволенных/без TG/без должности
-- `GET /periods/{id}/stats` — статусы отчётов по периоду (draft/submitted/approved/rejected/no_submission, completion_pct)
-- `GET /periods/{id}/dept-stats` — разбивка по подразделениям (total/submitted/approved/pending)
-- `GET /employees/no-telegram` — список активных сотрудников без telegram_id
-- `GET /audit-log?limit=&action=` — журнал аудита (таблица audit_log)
-- `GET /sync-logs?limit=` — история синхронизаций (таблица sync_log)
-
-### Frontend
-- `/admin` — панель с 4 табами: Обзор / Периоды / Сотрудники / Аудит
-  - Обзор: 5 stat-карточек, история синхронизаций, статус отчётов по выбранному периоду, прогресс-бар, разбивка по подразделениям
-  - Периоды: список всех периодов со статусами, клик → Обзор с этим периодом
-  - Сотрудники: список без Telegram ID, ссылки на управление периодами и уведомлениями
-  - Аудит: лог последних 50 действий
-  - Кнопки «Синхронизировать Redmine» и «Запустить напоминания» в шапке
-- `/dashboard` — кнопка «⚙️ Админ-панель» (тёмная) для роли admin
-
-## Этап 10 — Финансовый дашборд (детали реализации)
-
-### API (`/api/finance/`) — роли finance и admin
-- `GET /periods` — список активных/закрытых периодов для фильтра
-- `GET /reports?period_id=&department_code=&status=` — отчёты со статусами approved+submitted; сортировка по подразделению/имени
-- `GET /periods/{id}/summary` — сводка готовности по подразделениям (is_complete, completion_pct)
-
-### Frontend
-- `/finance` — страница с фильтрами (период, подразделение) и двумя вкладками:
-  - Сводка: общий прогресс + прогресс-бары по каждому подразделению с бейджами «✅ Готово» / «⏳ Частично»
-  - Список: отчёты сгруппированы по подразделению, ссылки «🔗 Redmine» и «📄 PDF» для каждого
-- `/dashboard` — кнопка «💰 Финансовый дашборд» (зелёная) для ролей finance и admin
-
-### Оптимизация
-- Сотрудники загружаются одним запросом (`redmine_id.in_(...)`) вместо N запросов в цикле
-
-## Шаг A — AI-провайдер + KPI-рефакторинг (2026-04-17)
-
-### ИЗМЕНЕНИЕ 1 — AI-провайдер: OpenAI → Gemini → заглушка
-- `backend/app/services/ai_service.py` — два провайдера: OpenAI GPT-4o-mini (primary), Gemini 1.5 Flash (fallback)
-- Новый метод `evaluate_binary_kpi(time_entries, criterion, formula_desc) → {score, summary, confidence}`
-- `summarize_time_entries` сохранён для обратной совместимости, использует ту же цепочку провайдеров
-- `backend/app/config.py` — добавлено поле `openai_api_key: str = ""`; удалено `gigachat_api_key`
-- `backend/requirements.txt` — добавлен `openai>=1.0.0`
-
-### ИЗМЕНЕНИЕ 2 — KpiMappingService: правильные formula_type
-- `backend/app/schemas/kpi.py` — новые схемы `KpiItem` и `KpiStructure` (три группы: binary_auto / binary_manual / numeric)
-- `backend/app/services/kpi_mapping_service.py` — полная перепись:
-  - Реальные formula_type: `binary_auto`, `binary_manual`, `threshold`, `multi_threshold`, `quarterly_threshold`
-  - `get_kpi_structure(role_id)` → `KpiStructure` с тремя группами
-  - `get_kpi_structure_by_pos_id(pos_id)` — поиск по числовому pos_id из employees.position_id
-  - `pos_id_to_role_id(pos_id)` — конвертация pos_id → role_id
-  - Обратная совместимость: `get_binary_auto_criteria`, `get_numeric_kpis`, `get_kpi_for_role`
-- **Важно:** `employees.position_id` хранит числовой `pos_id` (например `"4"`), а не `role_id` (`"РУК_ЗАМД_004"`) — используй `get_kpi_structure_by_pos_id` при работе с сотрудниками
-- `GET /api/submissions/my/{id}/kpi-structure` — теперь возвращает `{role_id, binary_auto[], binary_manual[], numeric[], total_weight, role_info}`
-
-### ИЗМЕНЕНИЕ 3 — ThresholdParser
-- `backend/app/services/threshold_parser.py` — парсер строк вида `">=67%→100% | <67%,>50%→50% | <50%→0%"`
-- Поддерживает: `threshold`, `multi_threshold`, `quarterly_threshold`
-- `backend/tests/test_threshold_parser.py` — 17 unit-тестов, все зелёные
-
-## Шаг B — KpiEngineService + обновлённые эндпоинты (2026-04-17)
-
-### ИЗМЕНЕНИЕ 1 — KpiEngineService (новый файл)
-- `backend/app/services/kpi_engine_service.py` — главный оркестратор обработки KPI-отчёта
-- 10 шагов: загрузка sub → period → трудозатраты Redmine → KPI-структура → параллельная AI-оценка (`asyncio.gather`) → binary_manual разметка → numeric разметка → общее саммари → сохранение в БД → возврат `KpiEngineResult`
-- Сохраняет в: `kpi_values` (JSON-список), `ai_raw_summary`, `ai_generated_at`
-- `system_flags`: `{partial_result, requires_review: [...], awaiting_manual: N, requires_fact: N, time_entries_count: N}`
-- `compute_score_from_kpi_values(kpi_values)` — пересчёт без обращения к БД
-
-### ИЗМЕНЕНИЕ 2 — Новые схемы в kpi.py
-- `KpiResult` — результат оценки одного KPI: score, confidence, summary, awaiting_manual_input, requires_fact_input, fact_value, parsed_thresholds, requires_review
-- `KpiEngineResult` — итог всей обработки: kpi_results[], partial_score, total_weight, scored_weight, completion_pct, system_flags
-
-### ИЗМЕНЕНИЕ 3 — Обновлённые эндпоинты kpi_submissions.py
-- `POST /api/submissions/my/{id}/generate-summary` → теперь вызывает `KpiEngineService.process_submission()`, возвращает `KpiEngineResult`
-- `GET /api/submissions/my/{id}/score` (новый) → возвращает `ScoreResponse` из сохранённых kpi_values
-- `PATCH /api/submissions/my/{id}` → принимает `SubmissionNumericUpdate`:
-  - `numeric_values: dict[str, {fact_value}]` — записывает факт + вычисляет score через `apply_threshold(parsed_thresholds)`
-  - `binary_manual_overrides: dict[str, {score, note}]` — записывает score руководителя
-  - Использует `flag_modified(sub, "kpi_values")` для надёжного обновления JSON-колонки
-
-### Проверено в тестах
-- `POST /generate-summary`: 65 трудозатрат, 4 binary_auto + 2 binary_manual, completion_pct=80%
-- `GET /score`: возвращает partial_score=100.0, total_weight=100, scored_weight=80
-- `PATCH` с binary_manual_override: score обновляется, awaiting_manual_input=False, completion_pct → 90%
-
-## Шаг C — Бэкенд binary_manual + Dark Cyber фронт (2026-04-17)
-
-### ИЗМЕНЕНИЕ 1 — Два новых эндпоинта review.py
-- `GET /api/review/{id}/pending-manual` → `PendingManualResponse` — список binary_manual KPI, ожидающих ручной оценки
-- `PATCH /api/review/{id}/binary-manual` → `ScoreResponse` — выставить score 0 или 100, пишет AuditLog
-- Оба проверяют принадлежность отчёта подчинённому через `_get_effective_subordinate_ids`
-- PATCH проверяет `status == submitted` (409 если уже approved/rejected), score ∈ {0, 100} (422 иначе)
-- После записи пересчитывает `partial_score` через `kpi_engine_service.compute_score_from_kpi_values`
-
-### ИЗМЕНЕНИЕ 2 — Критический баг subordination_service.py
-- `_to_unit()` возвращал `role_info["unit"]` (длинная строка "Руководство") вместо `role_info["role_id"]` ("РУК_ЗАМД_004")
-- `subordination.json` использует role_id в качестве ключей — fix: возвращать `role_info["role_id"]`
-- `get_subordinates()` пытался конвертировать role_ids через несуществующую map — fix: возвращать role_ids напрямую
-- Результат: manager видел 0 подчинённых → после исправления видит корректную команду
-
-### ИЗМЕНЕНИЕ 3 — _role_ids_to_pos_ids в review.py
-- `employees.position_id` хранит числовой pos_id ("71"), а не role_id ("ЦТР_НАЧ_071")
-- Добавлен helper `_role_ids_to_pos_ids()` через `kpi_mapping_service.get_role_info(rid)["pos_id"]`
-- Используется в `_get_effective_subordinate_ids` и `get_my_team`
-
-### ИЗМЕНЕНИЕ 4 — Dark Cyber дизайн-система
-- `frontend/src/styles/cyber.css` — CSS custom properties (--bg, --accent, --card, etc.), компоненты: `.cyber-card`, `.cyber-btn`, `.cyber-title`, `.badge-*`, `.loader-ring`, `.progress-bar-wrap`
-- `frontend/src/app/layout.tsx` — `import '@/styles/cyber.css'`
-- Шрифты: Orbitron (заголовки/числа), Exo 2 (текст)
-- Глобальный сетчатый фон через `body::before` (псевдоэлемент с CSS grid)
-
-### ИЗМЕНЕНИЕ 5 — Полная переработка фронтенда
-- `frontend/src/app/kpi/[submissionId]/page.tsx` — три секции (binary_auto / numeric / binary_manual), loader overlay, debounce 800ms для числового ввода, кнопка submit заблокирована при наличии несохранённых числовых KPI
-- Новые компоненты: `KpiCard`, `NumericInput`, `ScoreHeader`, `SectionTitle`, `StatusBadge`
-- `frontend/src/app/review/page.tsx` — Dark Cyber список отчётов, фильтры (submitted/approved/rejected/все), client-side вычисление score из kpi_values, сетка команды
-
-## Шаг D — Форма руководителя + PDF (2026-04-17)
-
-### ИЗМЕНЕНИЕ 1 — report_service.py: поддержка нового формата kpi_values
-- `_build_context()` полностью переписан для работы с `kpi_values` (JSON) вместо legacy binary полей
-- Группировка kpi_values по `kpi_type`: binary_auto + numeric → `specific_kpis`; binary_manual с is_common → дисциплина/распорядок/охрана труда
-- Поиск common KPI по фрагменту критерия: "исполнительской дисциплин", "трудового распорядка", "охран"
-- `total_result` вычисляется из реальных score, не hardcoded
-- Обратная совместимость: если kpi_values пустой — использует старые текстовые поля (bin_discipline_summary и т.д.)
-
-### ИЗМЕНЕНИЕ 2 — Страница детальной проверки (полная переработка)
-- `frontend/src/app/review/[submissionId]/page.tsx` — три секции + панель решения в Dark Cyber стиле
-- **Секция 1 — binary_auto**: read-only, показывает criterion, AI summary, score (Orbitron), confidence bar, бейдж "Требует внимания" при requires_review
-- **Секция 2 — numeric**: read-only, показывает plan_value, fact_value, score%
-- **Секция 3 — binary_manual**: интерактивная — кнопки-карточки [✅ ВЫПОЛНЕНО] / [❌ НЕ ВЫПОЛНЕНО], опциональный комментарий, сохранение через `PATCH /api/review/{id}/binary-manual`, обновление локального state без перезагрузки
-- **Модальное окно отклонения**: overlay с backdropFilter, textarea min 10 символов, кнопка "Подтвердить" заблокирована пока < 10
-- **Панель решения**: "Утвердить" заблокирована если `pending_manual_count > 0`; "Предпросмотр PDF" через `/api/reports/{id}/pdf`
-- Для утверждённых отчётов — кнопка "Скачать PDF"
-
-## Сессия 2026-04-17 — Тестирование и исправления
-
-### Исправленные баги
-
-#### Критический: `create-tasks` не создавал локальные `kpi_submissions`
-- **Файл:** `backend/app/services/period_service.py`
-- **Проблема:** `create_redmine_tasks` создавал задачи в Redmine, но не создавал записи `KpiSubmission` в локальной БД → дашборд сотрудника всегда показывал "Нет отчётов", KPI-форма была недоступна
-- **Исправление:** после успешного создания Redmine-задачи теперь создаётся `KpiSubmission(status=draft)` с `redmine_issue_id`
-
-#### Новый admin-эндпоинт для восстановления данных
-- **Файл:** `backend/app/api/admin.py`
-- `POST /api/admin/periods/{id}/create-submissions` — создаёт `kpi_submissions` для всех активных сотрудников по уже существующему периоду (без Redmine, для случаев когда задачи уже созданы)
-
-### Интеграция GigaChat
-- **Файл:** `backend/app/services/ai_service.py` — полностью переписан с поддержкой нескольких провайдеров
-- **Файл:** `backend/app/config.py` — добавлено поле `gigachat_api_key`
-- Приоритет: **GigaChat → Gemini → заглушка**
-- GigaChat: OAuth через `ngw.devices.sberbank.ru:9443/api/v2/oauth` (scope: `GIGACHAT_API_PERS`), чат через `gigachat.devices.sberbank.ru/api/v1/chat/completions`, `verify=False` (самоподписанный сертификат Сбера)
-- Ключ `GIGACHAT_API_KEY` — base64(client_id:client_secret) из кабинета developers.sber.ru/gigachat
-
-### Результаты тестирования (все 37 эндпоинтов)
-Протестированы локально, все работают:
-- Авторизация (login/refresh/me), синхронизация сотрудников (81 чел., 9 подразделений)
-- Управление периодами (CRUD), создание KPI-задач (dry_run + реальное)
-- KPI-форма: структура, AI-саммари (Gemini, 43 трудозатраты), черновик, submit
-- Review: команда, просмотр, утверждение/отклонение
-- PDF-генерация (~20KB), финализация
-- Финансовый дашборд, панель администратора, уведомления
-- Telegram-бот: код корректен, локально не работает из-за блокировки Docker Desktop → Telegram IP; на Amvera будет работать
-
-## Шаг E — PDF-шаблон, дашборд, финальные фиксы (2026-04-18)
-
-### ИЗМЕНЕНИЕ 1 — PDF-шаблон kpi_report.html
-- Добавлен CSS-блок для сводной таблицы (корпоративный стиль, без Dark Cyber)
-- Добавлена секция `{% if kpi_results %}...{% endif %}` — сводная таблица с прямым обходом kpi_values
-- Колонки: № / Показатель / Критерий / Вес / Факт+Результат (по kpi_type) / Оценка%
-- `binary_auto` → AI summary в колонке "Факт"; `binary_manual` → reviewer_comment; `numeric` → fact_value
-- Цвета оценки: зелёный (100%) / красный (0%) / оранжевый (частичный) / серый (нет)
-- Теги: `нараст.` для cumulative, `*` для requires_review + сноска внизу
-- Итоговая строка: ИТОГОВАЯ ОЦЕНКА = `total_score | int`%
-- Старая таблица (specific_kpis) сохранена как основной корпоративный формат
-
-### ИЗМЕНЕНИЕ 2 — report_service._build_context
-- Добавлено три поля в возвращаемый контекст:
-  - `kpi_results`: `kpi_values` (прямой проброс списка)
-  - `total_score`: `round(total_result * 100, 1)` — в 0-100 диапазоне для шаблона
-  - `has_review_flags`: `any(k.get("requires_review") for k in kpi_values)`
-
-### ИЗМЕНЕНИЕ 3 — Дашборд (полная переработка)
-- `frontend/src/app/dashboard/page.tsx` — Dark Cyber стиль, соответствует review/page.tsx
-- `MySubmissionCard`: прогресс-бар из score, индикаторы `⚡ AI: N/N`, `👤 Ручных: N/N`, `📊 Числовых: N/N`
-- Умные кнопки: PDF для approved, Просмотр для submitted, Заполнить/Исправить для draft/rejected
-- Секция «Ожидают проверки» для manager/admin — карточки подчинённых с выделенной кнопкой `🔍 Проверить`
-- Счётчик pending submissions в кнопке навигации «Проверка отчётов»
-
-### ИЗМЕНЕНИЕ 4 — KPI-форма edge cases
-- Submit заблокирован не только при незаполненных numeric, но и когда kpi_values пустой (AI не запускался)
-- Баннер «нет оценки»: solid border `rgba(0,229,255,0.4)`, background `rgba(0,229,255,0.05)`, призыв запустить AI
-- Статусные баннеры: жёлтый при `submitted` («Отчёт отправлен на проверку»), зелёный при `approved` («Отчёт утверждён»)
-- Всё это в inline в page.tsx, ScoreHeader не трогался
+- `frontend/src/styles/cyber.css`
+- Палитра: `--bg #06060f`, `--accent #00e5ff`, `--accent3 #00ff9d`, `--danger #ff3b5c`, `--warn #ffb800`
+- Шрифты: Orbitron (цифры/заголовки), Exo 2 (текст)
+- Компоненты: `.cyber-card`, `.progress-bar-wrap/.fill`, `.badge-*`, `.loader-ring`
 
 ## Деплой на Amvera
 
-### Переменные окружения (.env на сервере)
-- `REDMINE_URL`, `REDMINE_API_KEY`
-- `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
-- `JWT_SECRET_KEY` — минимум 32 символа, случайная строка
-- `TELEGRAM_BOT_TOKEN` — токен бота (`redmine_monitor_bot`)
-- `OPENAI_API_KEY` — ключ OpenAI GPT (sk-...), основной AI-провайдер
-- `GEMINI_API_KEY` — ключ Gemini (резервный AI, если OpenAI недоступен)
-- `FINANCE_TELEGRAM_IDS` — chat_id финансового блока через запятую
-- `FRONTEND_URL` — URL фронтенда (для CORS)
-- `BACKEND_URL` — URL бэкенда
-
-### После деплоя
 ```bash
 # Применить все миграции
 docker compose exec backend alembic upgrade head
 
-# Запустить первую синхронизацию сотрудников
+# Первая синхронизация сотрудников
 curl -X POST https://your-app.amvera.io/api/sync/run \
   -H "Authorization: Bearer <admin_token>"
 ```
 
-### Важные замечания
 - `reference/` монтируется как read-only — `KPI_Mapping.xlsx` и `subordination.json` должны быть в репо
-- Первый вход — войти через Redmine-учётку, затем вручную выставить роль `admin` в таблице `users`
-- Telegram-бот работает в polling-режиме — дополнительных настроек не требует
-
-## Сессия 2026-04-18 — Тестирование и доработка
-
-### AI-провайдеры (актуально)
-- PRIMARY: GigaChat (ngw.devices.sberbank.ru:9443, scope GIGACHAT_API_PERS)
-- FALLBACK: YandexGPT (llm.api.cloud.yandex.net, модель yandexgpt-lite)
-- ЗАГЛУШКА: score=100, confidence=50, summary="Требует ручной проверки"
-- Удалён: OpenAI (заблокирован в РФ — ошибка 403)
-- Gemini убран из цепочки (лимит 429 на бесплатном плане)
-
-### Переменные окружения (актуальные)
-- GIGACHAT_API_KEY — base64(client_id:client_secret) из developers.sber.ru/gigachat
-- YANDEX_API_KEY — API-ключ сервисного аккаунта из console.yandex.cloud
-- YANDEX_FOLDER_ID — ID каталога в Yandex Cloud
-- Удалены: OPENAI_API_KEY, GEMINI_API_KEY
-
-### Исправленные баги
-- redmine.py: verify=False добавлен во все 8 httpx.AsyncClient() вызовов
-  (Redmine использует самоподписанный сертификат — без этого 401 на логин)
-- redmine.py: import urllib3 удалён → warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-  (urllib3 недоступен как самостоятельный пакет в контейнере)
-- requirements.txt: fastapi==0.111.0 → fastapi>=0.104.0,<0.112.0
-  (версия 0.111.0 отсутствует на PyPI — сборка падала)
-- ai_service.py: gemini-1.5-flash → gemini-2.0-flash (модель переименована)
-- review/page.tsx, kpi/[submissionId]/page.tsx: убраны JSX-комментарии {/* */}
-  после закрывающих тегов — синтаксическая ошибка компилятора
-
-### Редизайн UI (Dark Cyber)
-- Все страницы переведены на дизайн-систему из reference/index.html
-- Шрифты: Orbitron (числа/заголовки), Exo 2 (текст)
-- Палитра: --bg #06060f, --accent #00e5ff, --accent3 #00ff9d, --danger #ff3b5c, --warn #ffb800
-- Ambient orbs, анимированная сетка-фон, fadeUp анимации
-- Sticky навигация с табами по ролям
-- Карточки: glassmorphism + цветная полоска 3px сверху
-
-### Результаты ручного тестирования
-✅ Авторизация (Chrome) — работает
-✅ Dashboard — дизайн, карточки, прогресс-бары
-✅ /kpi/{id} — дизайн, breadcrumb, секции AI/числовые/ручная
-✅ KpiEngineService — запускается, данные сохраняются в БД
-✅ Submit отчёта — статус меняется, read-only режим
-✅ /admin/periods — список периодов, создание
-
-⚠️ AI-генерация — работает через заглушку (нет рабочих ключей GigaChat/Yandex)
-⚠️ /review/{id} — не протестирована (нет submitted отчётов от подчинённых)
-⚠️ PDF — не протестирован (нет approved отчётов)
-❌ /admin, /admin/notifications, /finance — дизайн не применён
-
-### Архитектурные решения (зафиксированы к реализации)
-
-#### Activity Types → KPI маппинг
-Виды деятельности в Redmine привязываются к KPI-показателям должности.
-В KPI_Mapping.xlsx добавить колонку activity_names.
-KpiEngineService фильтрует time_entries по activity.name перед передачей в AI.
-Статус: ЗАПЛАНИРОВАНО (шаг I)
-
-#### Управление подчинённостью через UI
-Текущий subordination.json заменяется таблицей в PostgreSQL.
-Admin-панель → таб "Подчинённость": дерево иерархии + редактирование.
-Данные синхронизируются из Redmine (список сотрудников).
-Настройка подчинённости обязательна ДО создания задач на период.
-Статус: ЗАПЛАНИРОВАНО (шаг H)
-
-### Следующие шаги (приоритет)
-| Шаг | Задача | Статус |
-|---|---|---|
-| F | Смена AI: GigaChat primary + YandexGPT fallback | ✅ |
-| G | Дизайн admin-страниц + финансовый дашборд | ⏳ |
-| H | Подчинённость в БД + UI управления | ⏳ |
-| I | Activity types → KPI маппинг | ⏳ |
-
-## Сессия 2026-04-19 — Настройка YandexGPT + первая живая AI-оценка
-
-### Рабочая конфигурация YandexGPT
-- Ключ получать через: aistudio.yandex.ru → API Keys
-- Тип ключа: API-ключ сервисного аккаунта С ОБЛАСТЬЮ yc.ai.languageModels.execute
-- Ключ НЕ создавать через console.yandex.cloud UI (проблемы с resource-manager)
-- Folder ID: b1gjo5d34h6tr4ijadq6 (каталог default)
-- Переменные: YANDEX_API_KEY, YANDEX_FOLDER_ID
-
-### Что НЕ работает с YandexGPT
-- API-ключи через console.yandex.cloud → 403 resource-manager denied
-- IAM-токены через yc iam create-token → та же ошибка
-- OAuth-токены → 401 invalid
-- Решение: только ключ из aistudio.yandex.ru
-
-### Первая живая AI-оценка ✅
-- YandexGPT проанализировал трудозатраты ZaichkoVV за Апрель 2026
-- score=100 (Выполнено), confidence=85%, summary осмысленный
-- partial_score = 62.5% (4 binary_auto + 2 binary_manual ожидают)
-- Парсинг ответа: result.alternatives[0].message.text — корректный
+- Первый вход: войти через Redmine-учётку, выставить роль `admin` вручную в таблице `users`
+- Telegram-бот работает в polling-режиме
