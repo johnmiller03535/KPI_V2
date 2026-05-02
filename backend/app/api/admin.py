@@ -5,6 +5,7 @@ from sqlalchemy import select, and_
 from typing import Optional
 from pydantic import BaseModel
 
+from sqlalchemy import func as sa_func
 from app.database import get_db
 from app.core.deps import require_role
 from app.core.redmine import redmine_client
@@ -14,6 +15,7 @@ from app.models.period import Period
 from app.models.kpi_submission import KpiSubmission, SubmissionStatus
 from app.models.audit_log import AuditLog
 from app.models.sync_log import SyncLog
+from app.models.subordination import Subordination
 from app.services.kpi_mapping_service import kpi_mapping_service
 from app.services.subordination_service import subordination_service
 from app.services.people_import_service import rebuild_subordination_from_people_export
@@ -397,26 +399,49 @@ class SubordinationUpdate(BaseModel):
     evaluator_role_id: Optional[str] = None
 
 
+async def _get_evaluator_map(db: AsyncSession) -> dict:
+    """Читает матрицу подчинения из БД; fallback на JSON если таблица пуста."""
+    count_res = await db.execute(select(sa_func.count(Subordination.position_id)))
+    count = count_res.scalar() or 0
+    if count > 0:
+        sub_res = await db.execute(select(Subordination))
+        return {e.position_id: e.evaluator_id for e in sub_res.scalars().all()}
+    # fallback: JSON
+    subordination_service._load()
+    return dict(subordination_service._data.get("evaluator", {}))
+
+
+async def _seed_subordination_db(db: AsyncSession):
+    """Засеивает таблицу subordination из JSON если она пуста."""
+    count_res = await db.execute(select(sa_func.count(Subordination.position_id)))
+    if (count_res.scalar() or 0) > 0:
+        return
+    subordination_service._load()
+    evaluator_map = subordination_service._data.get("evaluator", {})
+    for pos_id, eval_id in evaluator_map.items():
+        db.add(Subordination(position_id=pos_id, evaluator_id=eval_id))
+    await db.flush()
+
+
 @router.get("/subordination")
 async def get_subordination(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    """Список всех должностей с их руководителями из subordination.json."""
+    """Список всех должностей с их руководителями (из БД или JSON-fallback)."""
     from app.models.kpi_constructor import KpiRoleCard
     cards_res = await db.execute(
         select(KpiRoleCard.pos_id).where(KpiRoleCard.status == "active").distinct()
     )
-    cards_pos_ids = {row[0] for row in cards_res.fetchall()}
+    cards_pos_ids = {int(row[0]) for row in cards_res.fetchall() if row[0] is not None}
 
+    evaluator_map = await _get_evaluator_map(db)
     all_roles = kpi_mapping_service.get_all_roles()
-    subordination_service._load()
-    evaluator_map = subordination_service._data.get("evaluator", {})
 
     result = []
     for role_info in sorted(all_roles, key=lambda r: r.get("pos_id", 0)):
         role_id = role_info["role_id"]
-        evaluator_role_id = evaluator_map.get(role_id)  # None если нет в матрице / директорский уровень
+        evaluator_role_id = evaluator_map.get(role_id)
         in_matrix = role_id in evaluator_map
 
         evaluator_name = None
@@ -433,7 +458,7 @@ async def get_subordination(
             "in_matrix": in_matrix,
             "evaluator_role_id": evaluator_role_id,
             "evaluator_name": evaluator_name,
-            "has_kpi_card": role_info.get("pos_id") in cards_pos_ids,
+            "has_kpi_card": int(role_info.get("pos_id") or 0) in cards_pos_ids,
         })
     return result
 
@@ -520,15 +545,24 @@ async def create_kpi_card(
 async def update_subordination(
     role_id: str,
     body: SubordinationUpdate,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(UserRole.admin)),
 ):
-    """Обновить руководителя для должности в subordination.json."""
-    try:
-        subordination_service.write_evaluator(role_id, body.evaluator_role_id or None)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка записи: {e}")
+    """Обновить руководителя для должности (сохраняет в PostgreSQL)."""
+    # Засеять таблицу из JSON если пуста
+    await _seed_subordination_db(db)
+
+    res = await db.execute(select(Subordination).where(Subordination.position_id == role_id))
+    entry = res.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail=f"role_id '{role_id}' не найден в матрице")
+
+    entry.evaluator_id = body.evaluator_role_id or None
+    await db.commit()
+
+    # Обновить in-memory кэш для review.py
+    subordination_service.update_evaluator_in_memory(role_id, body.evaluator_role_id or None)
+
     return {"ok": True, "role_id": role_id, "evaluator_role_id": body.evaluator_role_id}
 
 

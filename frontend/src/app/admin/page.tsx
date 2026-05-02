@@ -258,6 +258,7 @@ export default function AdminPage() {
           {TABS.map(tab => (
             <button
               key={tab.id}
+              data-tab={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
                 padding: '0 20px', height: 40,
@@ -703,7 +704,7 @@ function SubordinationTab() {
   const [rebuilding, setRebuilding] = useState(false)
   const [rebuildResult, setRebuildResult] = useState<any>(null)
   const [viewMode, setViewMode] = useState<'list' | 'tree'>('list')
-  const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set())
+  const [selectedUnit, setSelectedUnit] = useState<string>('__all__')
 
   useEffect(() => { loadData() }, [])
 
@@ -735,15 +736,6 @@ function SubordinationTab() {
     } finally { setSaving(null) }
   }
 
-  function toggleUnit(unit: string) {
-    setCollapsedUnits(prev => {
-      const next = new Set(prev)
-      if (next.has(unit)) next.delete(unit)
-      else next.add(unit)
-      return next
-    })
-  }
-
   if (loading) return (
     <div style={{ textAlign: 'center', padding: 64 }}>
       <div className="loader-ring" style={{ margin: '0 auto' }} />
@@ -753,18 +745,90 @@ function SubordinationTab() {
 
   const inMatrix = entries.filter(e => e.in_matrix)
   const notInMatrix = entries.filter(e => !e.in_matrix)
+  const withoutCard = inMatrix.filter(e => !e.has_kpi_card)
 
-  const groupedByUnit = inMatrix.reduce((acc: any, e: any) => {
+  const groupedByUnit = inMatrix.reduce((acc: Record<string, SubordinationEntry[]>, e) => {
     const u = e.unit || 'Прочие'
     if (!acc[u]) acc[u] = []
     acc[u].push(e)
     return acc
   }, {})
 
+  const unitList = Object.keys(groupedByUnit).sort()
+
+  // Записи для правой части (tree mode)
+  const treeEntries =
+    selectedUnit === '__all__' ? inMatrix :
+    selectedUnit === '__no_card__' ? withoutCard :
+    (groupedByUnit[selectedUnit] || [])
+
+  // Ряд должности (общий для обоих режимов дерева)
+  function EntryRow({ entry }: { entry: SubordinationEntry }) {
+    const isEditing = editingId === entry.role_id
+    return (
+      <div
+        style={{ padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'background 0.15s' }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{entry.role}</span>
+            {entry.has_kpi_card
+              ? <span className="badge badge-success" style={{ fontSize: 10 }}>✅ карточка</span>
+              : <span
+                  className="badge badge-warn"
+                  style={{ fontSize: 10, cursor: 'pointer' }}
+                  onClick={() => {
+                    const el = document.querySelector('[data-tab="kpi"]') as HTMLElement
+                    if (el) el.click()
+                  }}
+                >⚠️ нет карточки</span>
+            }
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>{entry.role_id}</div>
+          {isEditing ? (
+            <select
+              value={editValue}
+              onChange={e => setEditValue(e.target.value)}
+              style={{ marginTop: 6, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,229,255,0.35)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '4px 8px', maxWidth: 280 }}
+            >
+              <option value="">— Директорский уровень —</option>
+              {entries.filter(e => e.role_id !== entry.role_id).map(e => (
+                <option key={e.role_id} value={e.role_id}>{e.role} ({e.role_id})</option>
+              ))}
+            </select>
+          ) : entry.evaluator_role_id ? (
+            <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2 }}>→ {entry.evaluator_name || entry.evaluator_role_id}</div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2, fontStyle: 'italic' }}>→ директорский уровень</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 12 }}>
+          {isEditing ? (
+            <>
+              <button className="action-btn btn-fill" style={{ fontSize: 11, padding: '4px 12px' }}
+                onClick={() => handleSave(entry.role_id)} disabled={saving === entry.role_id}>
+                {saving === entry.role_id ? '...' : '💾'}
+              </button>
+              <button className="action-btn btn-view" style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => setEditingId(null)}>✕</button>
+            </>
+          ) : (
+            <button className="action-btn btn-view" style={{ fontSize: 11, padding: '4px 12px' }}
+              onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null) }}>
+              ✏️ Изменить
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="fade-up">
       {/* Заголовок + кнопки */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <div className="section-title-main" style={{ margin: 0 }}>Матрица подчинения</div>
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>
@@ -774,22 +838,15 @@ function SubordinationTab() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {/* Переключатель вида */}
           <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, overflow: 'hidden' }}>
-            <button
-              onClick={() => setViewMode('list')}
-              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'list' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'list' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}
-            >
+            <button onClick={() => setViewMode('list')}
+              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'list' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'list' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}>
               ≡ Список
             </button>
-            <button
-              onClick={() => setViewMode('tree')}
-              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'tree' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'tree' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}
-            >
-              🌳 Дерево
+            <button onClick={() => setViewMode('tree')}
+              style={{ padding: '6px 14px', fontSize: 12, background: viewMode === 'tree' ? 'rgba(0,229,255,0.15)' : 'transparent', border: 'none', color: viewMode === 'tree' ? 'var(--accent)' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif' }}>
+              🏢 По подразделениям
             </button>
           </div>
-          <button className="cyber-btn cyber-btn-primary" style={{ fontSize: 12, padding: '8px 14px' }} onClick={loadData}>
-            🔄 Обновить
-          </button>
           <button
             className="cyber-btn cyber-btn-success"
             style={{ fontSize: 12, padding: '8px 14px' }}
@@ -811,16 +868,15 @@ function SubordinationTab() {
       </div>
 
       {rebuildResult && (
-        <div className={`alert-banner ${rebuildResult.ok ? 'alert-success' : 'alert-warn'}`} style={{ marginBottom: 16 }}>
+        <div className={`alert-banner ${rebuildResult.ok ? 'alert-success' : 'alert-warn'}`} style={{ marginBottom: 12 }}>
           {rebuildResult.ok
             ? <span>✅ Импортировано: {rebuildResult.mapped_pairs} пар · файл: {rebuildResult.file?.split('/').pop()}</span>
             : <span>⚠️ {typeof rebuildResult.error === 'object' ? JSON.stringify(rebuildResult.error) : rebuildResult.error}</span>}
         </div>
       )}
 
-      {/* Баннер должностей без KPI-карточки */}
       {rebuildResult?.ok && rebuildResult.positions_without_cards?.length > 0 && (
-        <div style={{ background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+        <div style={{ background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
           <div style={{ fontSize: 13, color: 'var(--warn)', fontWeight: 600, marginBottom: 8 }}>
             ⚠️ Должности без KPI-карточки ({rebuildResult.positions_without_cards.length}):
           </div>
@@ -835,9 +891,7 @@ function SubordinationTab() {
       )}
 
       {saveResult?.ok && (
-        <div className="alert-banner alert-success" style={{ marginBottom: 16 }}>
-          ✅ Сохранено
-        </div>
+        <div className="alert-banner alert-success" style={{ marginBottom: 12 }}>✅ Сохранено</div>
       )}
 
       {/* Вид: Список */}
@@ -848,7 +902,6 @@ function SubordinationTab() {
               <tr>
                 <th style={TH}>Должность</th>
                 <th style={TH}>Подразделение</th>
-                <th style={TH}>Управление</th>
                 <th style={TH}>Руководитель</th>
                 <th style={TH}>Карточка</th>
                 <th style={{ ...TH, width: 120 }}></th>
@@ -856,7 +909,8 @@ function SubordinationTab() {
             </thead>
             <tbody>
               {inMatrix.map((entry) => (
-                <tr key={entry.role_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
+                <tr key={entry.role_id}
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
@@ -865,14 +919,10 @@ function SubordinationTab() {
                     <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>{entry.role_id}</div>
                   </td>
                   <td style={{ ...TD, fontSize: 12, color: 'var(--text-dim)' }}>{entry.unit}</td>
-                  <td style={{ ...TD, fontSize: 11, color: 'var(--text-dim)' }}>{entry.management}</td>
                   <td style={TD}>
                     {editingId === entry.role_id ? (
-                      <select
-                        value={editValue}
-                        onChange={e => setEditValue(e.target.value)}
-                        style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,229,255,0.35)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '4px 8px', width: '100%', maxWidth: 260 }}
-                      >
+                      <select value={editValue} onChange={e => setEditValue(e.target.value)}
+                        style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,229,255,0.35)', borderRadius: 6, color: 'var(--text)', fontSize: 12, padding: '4px 8px', width: '100%', maxWidth: 260 }}>
                         <option value="">— Директорский уровень —</option>
                         {entries.filter(e => e.role_id !== entry.role_id).map(e => (
                           <option key={e.role_id} value={e.role_id}>{e.role} ({e.role_id})</option>
@@ -889,33 +939,26 @@ function SubordinationTab() {
                   </td>
                   <td style={TD}>
                     {entry.has_kpi_card
-                      ? <span className="badge badge-success" style={{ fontSize: 10 }}>✅ есть</span>
-                      : <span className="badge badge-warn" style={{ fontSize: 10 }}>⚠️ нет</span>
+                      ? <span className="badge badge-success" style={{ fontSize: 10 }}>✅ карточка</span>
+                      : <span className="badge badge-warn" style={{ fontSize: 10, cursor: 'pointer' }}
+                          onClick={() => { const el = document.querySelector('[data-tab="kpi"]') as HTMLElement; if (el) el.click() }}>
+                          ⚠️ нет карточки
+                        </span>
                     }
                   </td>
                   <td style={{ ...TD, textAlign: 'right' }}>
                     {editingId === entry.role_id ? (
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button
-                          className="action-btn btn-fill"
-                          style={{ fontSize: 11, padding: '4px 12px' }}
-                          onClick={() => handleSave(entry.role_id)}
-                          disabled={saving === entry.role_id}
-                        >
+                        <button className="action-btn btn-fill" style={{ fontSize: 11, padding: '4px 12px' }}
+                          onClick={() => handleSave(entry.role_id)} disabled={saving === entry.role_id}>
                           {saving === entry.role_id ? '...' : '💾'}
                         </button>
-                        <button
-                          className="action-btn btn-view"
-                          style={{ fontSize: 11, padding: '4px 10px' }}
-                          onClick={() => setEditingId(null)}
-                        >✕</button>
+                        <button className="action-btn btn-view" style={{ fontSize: 11, padding: '4px 10px' }}
+                          onClick={() => setEditingId(null)}>✕</button>
                       </div>
                     ) : (
-                      <button
-                        className="action-btn btn-view"
-                        style={{ fontSize: 11, padding: '4px 12px' }}
-                        onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null) }}
-                      >
+                      <button className="action-btn btn-view" style={{ fontSize: 11, padding: '4px 12px' }}
+                        onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null) }}>
                         ✏️ Изменить
                       </button>
                     )}
@@ -927,52 +970,59 @@ function SubordinationTab() {
         </div>
       )}
 
-      {/* Вид: Дерево */}
+      {/* Вид: По подразделениям (двухколоночный layout) */}
       {viewMode === 'tree' && (
-        <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
-          {Object.entries(groupedByUnit).map(([unit, unitEntries]: [string, any]) => (
-            <div key={unit}>
-              <div
-                onClick={() => toggleUnit(unit)}
-                style={{ padding: '10px 16px', background: 'rgba(0,229,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', userSelect: 'none' }}
-              >
-                <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 11, color: 'var(--accent)', letterSpacing: 1 }}>
-                  {collapsedUnits.has(unit) ? '▶' : '▼'} {unit}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{unitEntries.length}</span>
-              </div>
-              {!collapsedUnits.has(unit) && (unitEntries as any[]).map((entry: any) => (
-                <div key={entry.role_id} style={{ padding: '10px 16px 10px 32px', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{entry.role}</span>
-                      {entry.has_kpi_card
-                        ? <span className="badge badge-success" style={{ fontSize: 10 }}>✅ карточка</span>
-                        : <span className="badge badge-warn" style={{ fontSize: 10 }}>⚠️ нет карточки</span>
-                      }
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>{entry.role_id}</div>
-                    {entry.evaluator_name && (
-                      <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2 }}>→ {entry.evaluator_name}</div>
-                    )}
-                  </div>
-                  <button
-                    className="action-btn btn-view"
-                    style={{ fontSize: 11, padding: '4px 12px' }}
-                    onClick={() => { setEditingId(entry.role_id); setEditValue(entry.evaluator_role_id || ''); setSaveResult(null); setViewMode('list') }}
-                  >
-                    ✏️ Изменить
-                  </button>
-                </div>
-              ))}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+          {/* Левая панель */}
+          <div className="cyber-card" style={{ width: 230, minWidth: 230, padding: 0, overflow: 'hidden', flexShrink: 0 }}>
+            {/* Все должности */}
+            <div
+              onClick={() => setSelectedUnit('__all__')}
+              style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer', background: selectedUnit === '__all__' ? 'rgba(0,229,255,0.1)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <span style={{ fontSize: 12, color: selectedUnit === '__all__' ? 'var(--accent)' : 'var(--text)', fontFamily: 'Exo 2, sans-serif' }}>Все должности</span>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace' }}>{inMatrix.length}</span>
             </div>
-          ))}
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+            {/* По подразделениям */}
+            {unitList.map(unit => (
+              <div key={unit}
+                onClick={() => setSelectedUnit(unit)}
+                style={{ padding: '9px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', background: selectedUnit === unit ? 'rgba(0,229,255,0.08)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'background 0.15s' }}
+                onMouseEnter={e => { if (selectedUnit !== unit) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                onMouseLeave={e => { if (selectedUnit !== unit) e.currentTarget.style.background = 'transparent' }}
+              >
+                <span style={{ fontSize: 11, color: selectedUnit === unit ? 'var(--accent)' : 'rgba(255,255,255,0.75)', fontFamily: 'Exo 2, sans-serif', lineHeight: 1.3 }}>{unit}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginLeft: 6, flexShrink: 0 }}>{groupedByUnit[unit]?.length}</span>
+              </div>
+            ))}
+            <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+            {/* Без карточки */}
+            <div
+              onClick={() => setSelectedUnit('__no_card__')}
+              style={{ padding: '10px 14px', cursor: 'pointer', background: selectedUnit === '__no_card__' ? 'rgba(255,184,0,0.12)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <span style={{ fontSize: 12, color: selectedUnit === '__no_card__' ? 'var(--warn)' : 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>⚠️ Без карточки</span>
+              <span style={{ fontSize: 11, color: withoutCard.length > 0 ? 'var(--warn)' : 'var(--text-dim)', fontFamily: 'Orbitron, monospace' }}>{withoutCard.length}</span>
+            </div>
+          </div>
+
+          {/* Правая часть */}
+          <div className="cyber-card" style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+            {treeEntries.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+                {selectedUnit === '__no_card__' ? '✅ Все должности имеют KPI-карточку' : 'Нет должностей'}
+              </div>
+            ) : (
+              treeEntries.map(entry => <EntryRow key={entry.role_id} entry={entry} />)
+            )}
+          </div>
         </div>
       )}
 
       {/* Не в матрице */}
       {notInMatrix.length > 0 && (
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 16 }}>
           <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'Orbitron, monospace', letterSpacing: 1 }}>
             НЕ В МАТРИЦЕ ({notInMatrix.length}):
           </div>

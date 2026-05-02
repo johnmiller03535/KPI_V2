@@ -28,4 +28,5 @@ async def get_db() -> AsyncSession:
 from app.models import (  # noqa: F401
     user, audit_log, employee, sync_log,
     period, period_exception, kpi_submission, deputy, notification,
+    subordination,
 )

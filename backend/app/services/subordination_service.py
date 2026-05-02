@@ -95,17 +95,26 @@ class SubordinationService:
         self._data = {}
         self._load()
 
+    def update_evaluator_in_memory(self, role_id: str, evaluator_role_id: Optional[str]):
+        """Обновляет evaluator только в памяти (без записи в файл)."""
+        self._load()
+        self._data.setdefault("evaluator", {})[role_id] = evaluator_role_id
+
     def write_evaluator(self, role_id: str, evaluator_role_id: Optional[str]):
-        """Обновляет evaluator в subordination.json и перезагружает сервис."""
+        """Обновляет evaluator в subordination.json и перезагружает сервис.
+        DEPRECATED: В продакшне файл read-only. Используйте update_evaluator_in_memory + DB."""
         self._load()
         evaluator_map = self._data.get("evaluator", {})
         if role_id not in evaluator_map:
             raise ValueError(f"role_id '{role_id}' не найден в subordination.json")
         evaluator_map[role_id] = evaluator_role_id
         self._data["evaluator"] = evaluator_map
-        with open(SUBORDINATION_PATH, "w", encoding="utf-8") as f:
-            import json as _json
-            _json.dump(self._data, f, ensure_ascii=False, indent=2)
+        try:
+            with open(SUBORDINATION_PATH, "w", encoding="utf-8") as f:
+                import json as _json
+                _json.dump(self._data, f, ensure_ascii=False, indent=2)
+        except OSError:
+            pass  # read-only filesystem — пропускаем запись в файл
         self.reload()
 
 

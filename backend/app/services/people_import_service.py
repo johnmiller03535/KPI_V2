@@ -212,20 +212,22 @@ async def rebuild_subordination_from_people_export(db: AsyncSession) -> dict:
         f"внешние менеджеры: {stats['skipped_external_manager']}"
     )
 
-    # 7. Сохранить subordination.json
+    # 7. Сохранить в таблицу subordination (PostgreSQL)
     try:
+        from app.models.subordination import Subordination
+        from sqlalchemy import delete as sql_delete
+        await db.execute(sql_delete(Subordination))
+        for role_id, eval_id in new_evaluator.items():
+            db.add(Subordination(position_id=role_id, evaluator_id=eval_id))
+        await db.commit()
+        # Обновить in-memory кэш для review.py
         subordination_service._load()
         data = dict(subordination_service._data)
         data["evaluator"] = new_evaluator
         subordination_service._data = data
-        # Пишем в файл так же, как write_evaluator
-        import json as _json
-        from app.services.subordination_service import SUBORDINATION_PATH
-        with open(SUBORDINATION_PATH, "w", encoding="utf-8") as f:
-            _json.dump(data, f, ensure_ascii=False, indent=2)
-        subordination_service.reload()
+        subordination_service._loaded = True
     except Exception as e:
-        stats["errors"].append(f"Ошибка записи subordination.json: {e}")
+        stats["errors"].append(f"Ошибка записи в БД: {e}")
         return stats
 
     return stats
