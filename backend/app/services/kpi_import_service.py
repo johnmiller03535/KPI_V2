@@ -12,6 +12,7 @@ kpi_role_card_indicators.
 
 import logging
 import os
+import re
 import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
@@ -24,6 +25,11 @@ from app.services.threshold_parser import parse_thresholds
 logger = logging.getLogger(__name__)
 
 KPI_MAPPING_PATH = os.environ.get("KPI_MAPPING_PATH", "/app/reference/KPI_Mapping.xlsx")
+
+
+def _norm(text: str) -> str:
+    """Нормализация текста для ключей дедупликации: убирает лишние пробелы и переносы строк."""
+    return re.sub(r'\s+', ' ', text.strip())
 
 INDICATOR_GROUPS = {
     "Общие показатели": None,
@@ -183,10 +189,10 @@ class KpiImportService:
 
             # --- Indicator ---
             if is_common:
-                ind_key = f"common::{criterion_text.strip()}"
-                ind_name_stored = criterion_text.strip()
+                ind_key = f"common::{_norm(criterion_text)}"
+                ind_name_stored = _norm(criterion_text)
             else:
-                ind_key = f"{ind_name}::{formula_type}"
+                ind_key = f"{_norm(ind_name)}::{formula_type}"
                 ind_name_stored = ind_name
 
             if ind_key not in indicators:
@@ -212,7 +218,7 @@ class KpiImportService:
 
             # --- Criterion ---
             # Ключ: (indicator_id, criterion_text)
-            crit_key = f"{ind_id}::{criterion_text.strip()}"
+            crit_key = f"{ind_id}::{_norm(criterion_text)}"
             if crit_key not in criteria:
                 crit_id = str(uuid.uuid4())
                 num_label, den_label = _parse_formula_desc(r["formula_desc"])
