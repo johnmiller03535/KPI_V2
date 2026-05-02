@@ -747,20 +747,26 @@ function SubordinationTab() {
   const notInMatrix = entries.filter(e => !e.in_matrix)
   const withoutCard = inMatrix.filter(e => !e.has_kpi_card)
 
-  const groupedByUnit = inMatrix.reduce((acc: Record<string, SubordinationEntry[]>, e) => {
-    const u = e.unit || 'Прочие'
-    if (!acc[u]) acc[u] = []
-    acc[u].push(e)
-    return acc
-  }, {})
+  // Верхний уровень подразделения: всё до первой точки
+  function topUnit(unit: string) {
+    return unit.split('.')[0].trim()
+  }
 
-  const unitList = Object.keys(groupedByUnit).sort()
+  // Уникальные верхнеуровневые подразделения
+  const topUnitList = [...new Set(
+    inMatrix.map(e => topUnit(e.unit || 'Прочие'))
+  )].sort()
+
+  // Счётчик для верхнеуровневого подразделения
+  function countForTopUnit(top: string) {
+    return inMatrix.filter(e => topUnit(e.unit || 'Прочие') === top).length
+  }
 
   // Записи для правой части (tree mode)
   const treeEntries =
     selectedUnit === '__all__' ? inMatrix :
     selectedUnit === '__no_card__' ? withoutCard :
-    (groupedByUnit[selectedUnit] || [])
+    inMatrix.filter(e => topUnit(e.unit || 'Прочие') === selectedUnit)
 
   // Ряд должности (общий для обоих режимов дерева)
   function EntryRow({ entry }: { entry: SubordinationEntry }) {
@@ -899,7 +905,7 @@ function SubordinationTab() {
         <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
+              <tr style={{ position: 'sticky', top: 64, zIndex: 20, background: '#0a0a1a' }}>
                 <th style={TH}>Должность</th>
                 <th style={TH}>Подразделение</th>
                 <th style={TH}>Руководитель</th>
@@ -973,8 +979,8 @@ function SubordinationTab() {
       {/* Вид: По подразделениям (двухколоночный layout) */}
       {viewMode === 'tree' && (
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          {/* Левая панель */}
-          <div className="cyber-card" style={{ width: 230, minWidth: 230, padding: 0, overflow: 'hidden', flexShrink: 0 }}>
+          {/* Левая панель — sticky */}
+          <div className="cyber-card" style={{ width: 230, minWidth: 230, padding: 0, overflow: 'auto', flexShrink: 0, position: 'sticky', top: 72, maxHeight: 'calc(100vh - 96px)' }}>
             {/* Все должности */}
             <div
               onClick={() => setSelectedUnit('__all__')}
@@ -984,8 +990,8 @@ function SubordinationTab() {
               <span style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace' }}>{inMatrix.length}</span>
             </div>
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
-            {/* По подразделениям */}
-            {unitList.map(unit => (
+            {/* По подразделениям (верхний уровень) */}
+            {topUnitList.map(unit => (
               <div key={unit}
                 onClick={() => setSelectedUnit(unit)}
                 style={{ padding: '9px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', background: selectedUnit === unit ? 'rgba(0,229,255,0.08)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'background 0.15s' }}
@@ -993,7 +999,7 @@ function SubordinationTab() {
                 onMouseLeave={e => { if (selectedUnit !== unit) e.currentTarget.style.background = 'transparent' }}
               >
                 <span style={{ fontSize: 11, color: selectedUnit === unit ? 'var(--accent)' : 'rgba(255,255,255,0.75)', fontFamily: 'Exo 2, sans-serif', lineHeight: 1.3 }}>{unit}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginLeft: 6, flexShrink: 0 }}>{groupedByUnit[unit]?.length}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginLeft: 6, flexShrink: 0 }}>{countForTopUnit(unit)}</span>
               </div>
             ))}
             <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
