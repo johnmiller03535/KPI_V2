@@ -1925,9 +1925,35 @@ function KpiIndicatorsTab() {
   return (
     <>
     <div className="fade-up">
-      <div style={{ display: 'flex', gap: 0, minHeight: 600 }}>
+      {/* Sticky шапка: поиск + кнопка */}
+      <div style={{ position: 'sticky', top: 64, zIndex: 30, background: 'var(--bg)', paddingBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input
+            type="text"
+            placeholder="Поиск по названию..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              flex: 1,
+              background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)',
+              borderRadius: 8, color: 'var(--text)', padding: '8px 14px',
+              fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none',
+            }}
+          />
+          <button
+            className="cyber-btn"
+            style={{ fontSize: 12, padding: '8px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)', whiteSpace: 'nowrap' }}
+            onClick={() => setShowCreateModal(true)}
+          >
+            + Добавить показатель
+          </button>
+        </div>
+      </div>
+
+      {/* Двухколоночный layout с внутренним скроллом */}
+      <div style={{ display: 'flex', height: 'calc(100vh - 200px)', overflow: 'hidden' }}>
         {/* Сайдбар групп */}
-        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', paddingRight: 0 }}>
+        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto' }}>
           {INDICATOR_GROUPS_LIST.map(g => (
             <div
               key={g.id}
@@ -1961,29 +1987,7 @@ function KpiIndicatorsTab() {
         </div>
 
         {/* Основная область */}
-        <div style={{ flex: 1, paddingLeft: 20 }}>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-            <input
-              type="text"
-              placeholder="Поиск по названию..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{
-                flex: 1,
-                background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)',
-                borderRadius: 8, color: 'var(--text)', padding: '8px 14px',
-                fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none',
-              }}
-            />
-            <button
-              className="cyber-btn"
-              style={{ fontSize: 12, padding: '8px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)', whiteSpace: 'nowrap' }}
-              onClick={() => setShowCreateModal(true)}
-            >
-              + Добавить показатель
-            </button>
-          </div>
-
+        <div style={{ flex: 1, paddingLeft: 20, overflowY: 'auto' }}>
           <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -2001,15 +2005,20 @@ function KpiIndicatorsTab() {
                       Ничего не найдено
                     </td>
                   </tr>
-                ) : filtered.map((ind: any) => (
+                ) : filtered.map((ind: any) => {
+                  const isInactive = ind.status !== 'active'
+                  return (
                   <tr key={ind.id}
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s' }}
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.15s', opacity: isInactive ? 0.5 : 1 }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
                     <td style={{ ...TD, fontWeight: 600, maxWidth: 380 }}>
                       <div>{ind.name}</div>
-                      {ind.is_common && <span style={{ fontSize: 10, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace' }}>ОБЩИЙ</span>}
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
+                        {ind.is_common && <span style={{ fontSize: 10, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace' }}>ОБЩИЙ</span>}
+                        {isInactive && <span style={{ fontSize: 10, color: '#888', fontFamily: 'Orbitron, monospace', background: 'rgba(255,255,255,0.06)', borderRadius: 4, padding: '0 5px' }}>{ind.status}</span>}
+                      </div>
                     </td>
                     <td style={TD}>
                       <span style={{
@@ -2041,7 +2050,8 @@ function KpiIndicatorsTab() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
