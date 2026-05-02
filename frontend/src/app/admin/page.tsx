@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
+import { normalizeUnit, buildDeptMap, sortedDeptKeys } from '@/utils/admin'
 
 // ─── Типы ─────────────────────────────────────────────────────────────────────
 
@@ -747,24 +748,9 @@ function SubordinationTab() {
   const notInMatrix = entries.filter(e => !e.in_matrix)
   const withoutCard = inMatrix.filter(e => !e.has_kpi_card)
 
-  // Нормализация: верхний уровень подразделения + схлопывание пробелов
-  function normalizeUnit(unit: string): string {
-    return unit.split('.')[0].replace(/\s+/g, ' ').trim()
-  }
-
-  // Уникальные верхнеуровневые подразделения через Map (гарантирует деdup)
-  const deptMap = new Map<string, number>()
-  inMatrix.forEach(e => {
-    const u = normalizeUnit(e.unit || 'Прочие') || 'Прочие'
-    deptMap.set(u, (deptMap.get(u) ?? 0) + 1)
-  })
-  const topUnitList = [...deptMap.entries()]
-    .sort(([a], [b]) => {
-      if (a === 'Руководство') return -1
-      if (b === 'Руководство') return 1
-      return a.localeCompare(b, 'ru')
-    })
-    .map(([unit]) => unit)
+  // Дедупликация и сортировка подразделений
+  const deptMap = buildDeptMap(inMatrix.map(e => ({ unit: e.unit })))
+  const topUnitList = sortedDeptKeys(deptMap)
 
   // Записи для правой части (tree mode)
   const treeEntries =
@@ -1211,19 +1197,16 @@ function KpiTab() {
 
   const editedWeight = editedIndicators.reduce((s, ci) => s + (ci.override_weight ?? ci.weight ?? 0), 0)
 
-  const cardsByUnit = cards.reduce((acc: any, c: any) => {
-    const u = c.unit || 'Прочие'
-    if (!acc[u]) acc[u] = []
-    acc[u].push(c)
-    return acc
-  }, {})
+  // Нормализованная группировка по верхнеуровневым подразделениям
+  const kpiDeptMap = buildDeptMap(cards.map((c: any) => ({ unit: c.unit })))
+  const kpiDeptKeys = sortedDeptKeys(kpiDeptMap)
 
   // Cards shown in right panel based on selected unit
   const displayedCards: any[] = selectedUnit === 'all'
     ? cards
     : selectedUnit === 'missing'
     ? []
-    : (cardsByUnit[selectedUnit] || [])
+    : cards.filter((c: any) => normalizeUnit(c.unit || 'Прочие') === selectedUnit)
 
   const sidebarItemStyle = (active: boolean): React.CSSProperties => ({
     padding: '10px 16px',
@@ -1371,20 +1354,24 @@ function KpiTab() {
   return (
     <>
     <div className="fade-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div className="section-title-main" style={{ margin: 0 }}>Карточки должностей</div>
-        <button
-          className="cyber-btn"
-          style={{ fontSize: 12, padding: '8px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)' }}
-          onClick={() => openCreateWizard()}
-        >
-          + Создать карточку
-        </button>
+      {/* ── Sticky-шапка ── */}
+      <div style={{ position: 'sticky', top: 64, zIndex: 30, background: 'var(--bg)', paddingBottom: 10, paddingTop: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="section-title-main" style={{ margin: 0 }}>Карточки должностей</div>
+          <button
+            className="cyber-btn"
+            style={{ fontSize: 12, padding: '8px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', color: 'var(--accent3)' }}
+            onClick={() => openCreateWizard()}
+          >
+            + Создать карточку
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, minHeight: 600 }}>
-        {/* Левый сайдбар */}
-        <div style={{ width: 220, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+      {/* ── Двухколоночный layout с внутренним скроллом ── */}
+      <div style={{ display: 'flex', gap: 0, height: 'calc(100vh - 200px)', overflow: 'hidden' }}>
+        {/* Левый сайдбар — внутренний скролл */}
+        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto' }}>
           <div onClick={() => { setSelectedUnit('all'); setSelectedPosId(''); setCard(null) }} style={sidebarItemStyle(selectedUnit === 'all')}>
             <span>📋 Все карточки</span>
             <span style={countBadgeStyle}>{cards.length}</span>
@@ -1394,16 +1381,16 @@ function KpiTab() {
             <span style={{ ...countBadgeStyle, color: 'var(--warn)', background: 'rgba(255,184,0,0.12)' }}>{positionsWithoutCards.length}</span>
           </div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: 4 }} />
-          {Object.keys(cardsByUnit).sort().map(unit => (
+          {kpiDeptKeys.map(unit => (
             <div key={unit} onClick={() => { setSelectedUnit(unit); setSelectedPosId(''); setCard(null) }} style={sidebarItemStyle(selectedUnit === unit)}>
               <span style={{ fontSize: 11 }}>{unit}</span>
-              <span style={countBadgeStyle}>{cardsByUnit[unit].length}</span>
+              <span style={countBadgeStyle}>{kpiDeptMap.get(unit)}</span>
             </div>
           ))}
         </div>
 
-        {/* Правая область */}
-        <div style={{ flex: 1, paddingLeft: 20 }}>
+        {/* Правая область — внутренний скролл */}
+        <div style={{ flex: 1, paddingLeft: 20, overflowY: 'auto' }}>
           {/* Список карточек (когда ни одна не открыта) */}
           {!card && !cardLoading && (
             <div>
