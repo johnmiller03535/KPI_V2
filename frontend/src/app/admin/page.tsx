@@ -2076,7 +2076,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     >
       <div
         className="cyber-card"
-        style={{ width: 700, maxWidth: '95vw', maxHeight: '88vh', padding: 0, display: 'flex', flexDirection: 'column' }}
+        style={{ width: 700, maxWidth: '95vw', maxHeight: '88vh', padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Шапка — фиксированная */}
@@ -2354,11 +2354,7 @@ function KpiIndicatorsTab() {
   const [activeGroup, setActiveGroup] = useState('all')
   const [search, setSearch] = useState('')
   const [editingIndicator, setEditingIndicator] = useState<any>(null)
-  const [editForm, setEditForm] = useState<any>({})
-  const [saving, setSaving] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [createForm, setCreateForm] = useState({ name: '', formula_type: 'binary_manual', indicator_group: 'Прочие показатели', is_common: false, criterion: '', numerator_label: '', denominator_label: '', cumulative: false })
-  const [creating, setCreating] = useState(false)
 
   function fetchIndicators() {
     setLoading(true)
@@ -2381,80 +2377,7 @@ function KpiIndicatorsTab() {
   })
 
   function openEdit(ind: any) {
-    const cr = ind.criteria?.[0] || {}
-    setEditForm({
-      name: ind.name,
-      indicator_group: ind.indicator_group || 'Прочие показатели',
-      criterion: cr.criterion || '',
-      numerator_label: cr.numerator_label || '',
-      denominator_label: cr.denominator_label || '',
-      cumulative: cr.cumulative || false,
-      thresholds: cr.thresholds ? JSON.stringify(cr.thresholds, null, 2) : '',
-      quarterly_thresholds: cr.quarterly_thresholds ? JSON.stringify(cr.quarterly_thresholds, null, 2) : '',
-      common_text_positive: cr.common_text_positive || '',
-      common_text_negative: cr.common_text_negative || '',
-    })
     setEditingIndicator(ind)
-  }
-
-  async function handleSave() {
-    if (!editingIndicator) return
-    setSaving(true)
-    try {
-      let thresholds = undefined
-      if (editForm.thresholds) {
-        try { thresholds = JSON.parse(editForm.thresholds) } catch { thresholds = undefined }
-      }
-      let quarterly_thresholds = undefined
-      if (editForm.quarterly_thresholds) {
-        try { quarterly_thresholds = JSON.parse(editForm.quarterly_thresholds) } catch { quarterly_thresholds = undefined }
-      }
-      const payload: any = {
-        indicator_group: editForm.indicator_group,
-        criterion: editForm.criterion || undefined,
-        numerator_label: editForm.numerator_label || undefined,
-        denominator_label: editForm.denominator_label || undefined,
-        cumulative: editForm.cumulative,
-        common_text_positive: editForm.common_text_positive || undefined,
-        common_text_negative: editForm.common_text_negative || undefined,
-      }
-      if (thresholds) payload.thresholds = thresholds
-      if (quarterly_thresholds) payload.quarterly_thresholds = quarterly_thresholds
-      // Only include name if indicator is draft
-      if (editingIndicator.status === 'draft') {
-        payload.name = editForm.name
-      }
-      await api.put(`/kpi/indicators/${editingIndicator.id}`, payload)
-      fetchIndicators()
-      setEditingIndicator(null)
-    } catch (e: any) {
-      alert(e.response?.data?.detail || 'Ошибка сохранения')
-    } finally { setSaving(false) }
-  }
-
-  async function handleCreate() {
-    if (!createForm.name || !createForm.criterion) return
-    setCreating(true)
-    try {
-      const payload: any = {
-        name: createForm.name,
-        formula_type: createForm.formula_type,
-        indicator_group: createForm.indicator_group,
-        is_common: createForm.is_common,
-        criterion: createForm.criterion,
-      }
-      if (['threshold', 'multi_threshold', 'quarterly_threshold'].includes(createForm.formula_type)) {
-        if (createForm.numerator_label) payload.numerator_label = createForm.numerator_label
-        if (createForm.denominator_label) payload.denominator_label = createForm.denominator_label
-        payload.cumulative = createForm.cumulative
-      }
-      await api.post('/kpi/indicators', payload)
-      fetchIndicators()
-      setShowCreateModal(false)
-      setCreateForm({ name: '', formula_type: 'binary_manual', indicator_group: 'Прочие показатели', is_common: false, criterion: '', numerator_label: '', denominator_label: '', cumulative: false })
-    } catch (e: any) {
-      alert(e.response?.data?.detail || 'Ошибка создания')
-    } finally { setCreating(false) }
   }
 
   if (loading) return (
@@ -2463,9 +2386,6 @@ function KpiIndicatorsTab() {
       <p className="loader-text" style={{ marginTop: 20 }}>ЗАГРУЗКА...</p>
     </div>
   )
-
-  const isNumericType = ['threshold', 'multi_threshold', 'quarterly_threshold'].includes(editingIndicator?.formula_type)
-  const isBinaryType = ['binary_auto', 'binary_manual'].includes(editingIndicator?.formula_type)
 
   return (
     <>
