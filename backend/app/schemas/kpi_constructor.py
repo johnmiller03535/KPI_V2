@@ -60,6 +60,8 @@ class CriterionResponse(BaseModel):
     plan_value: Optional[str]
     common_text_positive: Optional[str]
     common_text_negative: Optional[str]
+    sub_type: Optional[str] = None
+    order: int = 0
     created_at: datetime
 
     class Config:

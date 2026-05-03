@@ -1127,6 +1127,7 @@ function AuditTab() {
 const TYPE_LABELS: Record<string, string> = {
   binary_auto: 'Авто',
   binary_manual: 'Ручной',
+  multi_binary: 'Мульти-бинарный',
   threshold: 'Порог',
   multi_threshold: 'Мульти-порог',
   quarterly_threshold: 'Квартальный',
@@ -1135,6 +1136,7 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   binary_auto: 'var(--accent)',
   binary_manual: 'var(--warn)',
+  multi_binary: '#ff6b9d',
   threshold: 'var(--accent3)',
   multi_threshold: '#b4a0ff',
   quarterly_threshold: '#ff8c00',
@@ -1806,6 +1808,544 @@ const INDICATOR_GROUPS_LIST = [
   { id: 'Прочие показатели', label: '📌 Прочие показатели' },
 ]
 
+// ─── TYPE DESCRIPTIONS ────────────────────────────────────────────────────────
+const TYPE_DESCRIPTIONS: Record<string, string> = {
+  binary_auto: 'AI оценивает автоматически по трудозатратам сотрудника в Redmine',
+  binary_manual: 'Руководитель оценивает вручную: ✅ выполнено / ❌ не выполнено',
+  multi_binary: 'Руководитель оценивает каждый подпоказатель отдельно — нужно выполнить все',
+  threshold: 'Сотрудник вводит факт/план, система считает % и применяет пороги',
+  multi_threshold: 'Несколько числовых подпоказателей — нужно выполнить все',
+  quarterly_threshold: 'Числовой с разными порогами для каждого квартала',
+}
+
+// ─── SHARED STYLES ────────────────────────────────────────────────────────────
+const INPUT_STYLE: React.CSSProperties = {
+  width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)',
+  borderRadius: 8, color: 'var(--text)', padding: '8px 12px',
+  fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+}
+const LABEL_STYLE: React.CSSProperties = {
+  display: 'block', fontSize: 11, color: 'var(--text-dim)',
+  fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1,
+}
+const SELECT_STYLE: React.CSSProperties = {
+  ...INPUT_STYLE, cursor: 'pointer',
+}
+const ERROR_STYLE: React.CSSProperties = {
+  color: 'var(--danger)', fontSize: 11, marginTop: 4, fontFamily: 'Exo 2, sans-serif',
+}
+
+// ─── THRESHOLD RULES EDITOR ───────────────────────────────────────────────────
+type ThresholdRule = { operator: string; value: string; score: string }
+
+function ThresholdRulesEditor({ rules, onChange }: {
+  rules: ThresholdRule[]
+  onChange: (rules: ThresholdRule[]) => void
+}) {
+  function update(i: number, field: keyof ThresholdRule, val: string) {
+    const updated = rules.map((r, idx) => idx === i ? { ...r, [field]: val } : r)
+    onChange(updated)
+  }
+  function remove(i: number) { onChange(rules.filter((_, idx) => idx !== i)) }
+  function add() { onChange([...rules, { operator: '>=', value: '', score: '' }]) }
+
+  return (
+    <div>
+      {rules.map((rule, i) => (
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <select
+            value={rule.operator}
+            onChange={e => update(i, 'operator', e.target.value)}
+            style={{ ...SELECT_STYLE, width: 64, padding: '8px 4px' }}
+          >
+            {['>=', '>', '<=', '<', '='].map(op => <option key={op} value={op}>{op}</option>)}
+          </select>
+          <input
+            value={rule.value}
+            onChange={e => update(i, 'value', e.target.value)}
+            placeholder="0–100"
+            style={{ ...INPUT_STYLE, width: 80 }}
+          />
+          <span style={{ color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>%  →</span>
+          <input
+            value={rule.score}
+            onChange={e => update(i, 'score', e.target.value)}
+            placeholder="балл"
+            style={{ ...INPUT_STYLE, width: 70 }}
+          />
+          <button onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>🗑</button>
+        </div>
+      ))}
+      <button
+        onClick={add}
+        style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontFamily: 'Exo 2, sans-serif' }}
+      >
+        + Добавить правило
+      </button>
+    </div>
+  )
+}
+
+// ─── INDICATOR FORM MODAL ─────────────────────────────────────────────────────
+function IndicatorFormModal({ initialData, onClose, onSuccess }: {
+  initialData?: any
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const isEdit = !!initialData
+
+  // Parse initialData into form state
+  const initCr = initialData?.criteria?.[0] || {}
+  const initSubBinary = initialData?.formula_type === 'multi_binary' && initCr.sub_indicators
+    ? initCr.sub_indicators.map((s: any, i: number) => ({ description: s.description || '', order: s.order ?? i }))
+    : [{ description: '', order: 0 }, { description: '', order: 1 }]
+
+  function parseThresholds(t: any[]): ThresholdRule[] {
+    if (!t || !t.length) return [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }]
+    return t.map((r: any) => {
+      const cond = r.condition || ''
+      const match = cond.match(/^(>=|<=|>|<|=)(.*)$/)
+      return { operator: match?.[1] || '>=', value: match?.[2] || '', score: String(r.score ?? '') }
+    })
+  }
+
+  const initSubThresholds = initialData?.formula_type === 'multi_threshold' && initCr.sub_indicators
+    ? initCr.sub_indicators.map((s: any) => ({
+        name: s.name || '',
+        numerator_label: s.numerator_label || '',
+        denominator_label: s.denominator_label || '',
+        cumulative: s.cumulative || false,
+        thresholds: parseThresholds(s.thresholds),
+      }))
+    : [
+        { name: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] },
+        { name: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] },
+      ]
+
+  function emptyQThresholds() {
+    return { Q1: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }], Q2: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }], Q3: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }], Q4: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] }
+  }
+
+  const initQThresholds = initialData?.formula_type === 'quarterly_threshold' && initCr.quarterly_thresholds
+    ? { Q1: parseThresholds(initCr.quarterly_thresholds.Q1), Q2: parseThresholds(initCr.quarterly_thresholds.Q2), Q3: parseThresholds(initCr.quarterly_thresholds.Q3), Q4: parseThresholds(initCr.quarterly_thresholds.Q4) }
+    : emptyQThresholds()
+
+  const [formulaType, setFormulaType] = useState(initialData?.formula_type || '')
+  const [name, setName] = useState(initialData?.name || '')
+  const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || 'Прочие показатели')
+  const [isCommon, setIsCommon] = useState(initialData?.is_common || false)
+  const [criterion, setCriterion] = useState(initCr.criterion || '')
+  const [numeratorLabel, setNumeratorLabel] = useState(initCr.numerator_label || '')
+  const [denominatorLabel, setDenominatorLabel] = useState(initCr.denominator_label || '')
+  const [cumulative, setCumulative] = useState(initCr.cumulative || false)
+  const [thresholds, setThresholds] = useState<ThresholdRule[]>(parseThresholds(initCr.thresholds))
+  const [subBinaryItems, setSubBinaryItems] = useState(initSubBinary)
+  const [subThresholds, setSubThresholds] = useState(initSubThresholds)
+  const [quarterlyThresholds, setQuarterlyThresholds] = useState<Record<string, ThresholdRule[]>>(initQThresholds)
+  const [activeQuarter, setActiveQuarter] = useState<'Q1'|'Q2'|'Q3'|'Q4'>('Q1')
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+
+  function validate(): boolean {
+    const e: Record<string, string> = {}
+    if (!formulaType) e.formulaType = 'Выберите тип показателя'
+    if (!name.trim()) e.name = 'Введите название показателя'
+    if (!criterion.trim()) e.criterion = 'Опишите критерий оценки'
+    if (!indicatorGroup) e.indicatorGroup = 'Выберите группу'
+
+    if (formulaType === 'multi_binary') {
+      if (subBinaryItems.length < 2) e.subBinary = 'Добавьте хотя бы 2 подпоказателя'
+      else if (subBinaryItems.some((s: any) => !s.description.trim())) e.subBinary = 'Заполните описание каждого подпоказателя'
+    }
+    if (['threshold', 'multi_threshold', 'quarterly_threshold'].includes(formulaType)) {
+      if (formulaType !== 'multi_threshold') {
+        if (!numeratorLabel.trim()) e.numerator = 'Укажите что считается в числителе'
+        if (!denominatorLabel.trim()) e.denominator = 'Укажите базу для расчёта %'
+      }
+    }
+    if (formulaType === 'threshold') {
+      if (!thresholds.length) e.thresholds = 'Добавьте хотя бы одно правило оценки'
+      else if (!thresholds.some((r: ThresholdRule) => r.score === '0')) e.thresholds = 'Добавьте правило для минимального балла (0)'
+      else if (thresholds.some((r: ThresholdRule) => !r.value || isNaN(parseFloat(r.value)))) e.thresholds = 'Введите числовые значения порогов'
+    }
+    if (formulaType === 'multi_threshold') {
+      if (subThresholds.length < 2) e.subThresholds = 'Добавьте хотя бы 2 числовых подпоказателя'
+      else {
+        for (const sub of subThresholds) {
+          if (!sub.numerator_label.trim()) { e.subThresholds = 'Заполните числитель для каждого подпоказателя'; break }
+          if (!sub.denominator_label.trim()) { e.subThresholds = 'Заполните знаменатель для каждого подпоказателя'; break }
+          if (!sub.thresholds.length) { e.subThresholds = 'Добавьте правила для каждого подпоказателя'; break }
+        }
+      }
+    }
+    if (formulaType === 'quarterly_threshold') {
+      for (const q of ['Q1', 'Q2', 'Q3', 'Q4'] as const) {
+        if (!quarterlyThresholds[q].length) { e.quarterly = `Заполните правила для квартала ${q}`; break }
+      }
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  function buildPayload() {
+    const base: any = {
+      name: name.trim(),
+      formula_type: formulaType,
+      indicator_group: indicatorGroup,
+      is_common: isCommon,
+      criterion: criterion.trim(),
+    }
+    if (formulaType === 'multi_binary') {
+      base.sub_indicators = subBinaryItems.map((s: any, i: number) => ({
+        description: s.description, order: i, sub_type: 'sub_binary',
+      }))
+    }
+    if (['threshold', 'quarterly_threshold'].includes(formulaType)) {
+      base.numerator_label = numeratorLabel.trim()
+      base.denominator_label = denominatorLabel.trim()
+      base.cumulative = cumulative
+    }
+    if (formulaType === 'threshold') {
+      base.thresholds = thresholds.map((r: ThresholdRule) => ({
+        condition: `${r.operator}${r.value}`, score: parseFloat(r.score),
+      }))
+    }
+    if (formulaType === 'quarterly_threshold') {
+      base.quarterly_thresholds = Object.fromEntries(
+        (['Q1', 'Q2', 'Q3', 'Q4'] as const).map(q => [
+          q, quarterlyThresholds[q].map((r: ThresholdRule) => ({ condition: `${r.operator}${r.value}`, score: parseFloat(r.score) }))
+        ])
+      )
+    }
+    if (formulaType === 'multi_threshold') {
+      base.sub_indicators = subThresholds.map((sub: any) => ({
+        name: sub.name,
+        numerator_label: sub.numerator_label,
+        denominator_label: sub.denominator_label,
+        cumulative: sub.cumulative,
+        thresholds: sub.thresholds.map((r: ThresholdRule) => ({ condition: `${r.operator}${r.value}`, score: parseFloat(r.score) })),
+      }))
+    }
+    return base
+  }
+
+  async function handleSubmit() {
+    if (!validate()) return
+    setSaving(true)
+    try {
+      const payload = buildPayload()
+      if (isEdit) {
+        // For edit, only send updatable fields
+        const updatePayload: any = {
+          indicator_group: payload.indicator_group,
+          is_common: payload.is_common,
+          criterion: payload.criterion,
+          numerator_label: payload.numerator_label,
+          denominator_label: payload.denominator_label,
+          cumulative: payload.cumulative,
+          thresholds: payload.thresholds,
+          sub_indicators: payload.sub_indicators,
+          quarterly_thresholds: payload.quarterly_thresholds,
+        }
+        if (initialData.status === 'draft') updatePayload.name = payload.name
+        await api.put(`/kpi/indicators/${initialData.id}`, updatePayload)
+      } else {
+        await api.post('/kpi/indicators', payload)
+      }
+      onSuccess()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка сохранения')
+    } finally { setSaving(false) }
+  }
+
+  function copyQ1ToAll() {
+    setQuarterlyThresholds(prev => ({
+      Q1: prev.Q1,
+      Q2: prev.Q1.map(r => ({ ...r })),
+      Q3: prev.Q1.map(r => ({ ...r })),
+      Q4: prev.Q1.map(r => ({ ...r })),
+    }))
+  }
+
+  const title = isEdit ? 'РЕДАКТИРОВАТЬ ПОКАЗАТЕЛЬ' : 'НОВЫЙ ПОКАЗАТЕЛЬ'
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div
+        className="cyber-card"
+        style={{ width: 700, maxWidth: '95vw', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Шапка */}
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 1 }}>
+          <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent3)' }}>{title}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {/* ТИП */}
+          <div>
+            <label style={LABEL_STYLE}>ТИП *</label>
+            <select
+              value={formulaType}
+              onChange={e => setFormulaType(e.target.value)}
+              disabled={isEdit}
+              style={{ ...SELECT_STYLE, opacity: isEdit ? 0.6 : 1 }}
+            >
+              <option value="">— Выберите тип показателя —</option>
+              {Object.entries(TYPE_LABELS).map(([val, lbl]) => (
+                <option key={val} value={val}>{lbl} ({val})</option>
+              ))}
+            </select>
+            {errors.formulaType && <div style={ERROR_STYLE}>{errors.formulaType}</div>}
+            {formulaType && TYPE_DESCRIPTIONS[formulaType] && (
+              <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(0,229,255,0.06)', borderRadius: 6, border: '1px solid rgba(0,229,255,0.15)', fontSize: 12, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                💡 {TYPE_DESCRIPTIONS[formulaType]}
+              </div>
+            )}
+          </div>
+
+          {/* НАЗВАНИЕ */}
+          <div>
+            <label style={LABEL_STYLE}>НАЗВАНИЕ *</label>
+            <textarea
+              rows={3}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              disabled={isEdit && initialData?.status !== 'draft'}
+              placeholder="Полное официальное название показателя из методики"
+              style={{ ...INPUT_STYLE, resize: 'vertical', opacity: (isEdit && initialData?.status !== 'draft') ? 0.6 : 1 }}
+            />
+            {isEdit && initialData?.status !== 'draft' && (
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>Название можно менять только у показателей в статусе draft</div>
+            )}
+            {errors.name && <div style={ERROR_STYLE}>{errors.name}</div>}
+          </div>
+
+          {/* ГРУППА + Общий */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <label style={LABEL_STYLE}>ГРУППА *</label>
+              <select
+                value={indicatorGroup}
+                onChange={e => setIndicatorGroup(e.target.value)}
+                style={SELECT_STYLE}
+              >
+                {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all' && g.id !== 'Общие показатели').map(g => (
+                  <option key={g.id} value={g.id}>{g.label}</option>
+                ))}
+              </select>
+              {errors.indicatorGroup && <div style={ERROR_STYLE}>{errors.indicatorGroup}</div>}
+            </div>
+            <div style={{ paddingTop: 28 }}>
+              <label
+                title="Показатель автоматически добавляется всем 91 сотруднику. Только для HR/admin"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap' }}
+              >
+                <input type="checkbox" checked={isCommon} onChange={e => setIsCommon(e.target.checked)} />
+                Общий для всех сотрудников
+              </label>
+            </div>
+          </div>
+
+          {/* КРИТЕРИЙ */}
+          <div>
+            <label style={LABEL_STYLE}>КРИТЕРИЙ ОЦЕНКИ *</label>
+            <textarea
+              rows={4}
+              value={criterion}
+              onChange={e => setCriterion(e.target.value)}
+              placeholder="Опишите что именно оценивается и по какому принципу"
+              style={{ ...INPUT_STYLE, resize: 'vertical' }}
+            />
+            {errors.criterion && <div style={ERROR_STYLE}>{errors.criterion}</div>}
+          </div>
+
+          {/* === MULTI_BINARY: Подпоказатели === */}
+          {formulaType === 'multi_binary' && (
+            <div>
+              <label style={LABEL_STYLE}>ПОДПОКАЗАТЕЛИ * (минимум 2)</label>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, fontFamily: 'Exo 2, sans-serif' }}>
+                Каждый подпоказатель руководитель оценит отдельно ✅/❌. Невыполнение хотя бы одного = 0 баллов.
+              </div>
+              {subBinaryItems.map((item: any, i: number) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                  <span style={{ color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20 }}>{i + 1}.</span>
+                  <input
+                    value={item.description}
+                    onChange={e => {
+                      const updated = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, description: e.target.value } : s)
+                      setSubBinaryItems(updated)
+                    }}
+                    placeholder="Описание подпоказателя..."
+                    style={{ ...INPUT_STYLE, flex: 1 }}
+                  />
+                  {subBinaryItems.length > 2 && (
+                    <button
+                      onClick={() => setSubBinaryItems(subBinaryItems.filter((_: any, idx: number) => idx !== i))}
+                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}
+                    >🗑</button>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => setSubBinaryItems([...subBinaryItems, { description: '', order: subBinaryItems.length }])}
+                style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontFamily: 'Exo 2, sans-serif' }}
+              >
+                + Добавить подпоказатель
+              </button>
+              {errors.subBinary && <div style={ERROR_STYLE}>{errors.subBinary}</div>}
+            </div>
+          )}
+
+          {/* === THRESHOLD: Числитель / Знаменатель / Пороги === */}
+          {formulaType === 'threshold' && (
+            <>
+              <div style={{ padding: '12px 16px', background: 'rgba(0,255,157,0.04)', border: '1px solid rgba(0,255,157,0.15)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 12 }}>ЧИСЛОВОЙ ПОКАЗАТЕЛЬ</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+                  <div>
+                    <label style={LABEL_STYLE}>ЧИСЛИТЕЛЬ *</label>
+                    <input value={numeratorLabel} onChange={e => setNumeratorLabel(e.target.value)} placeholder="Что считаем (факт)" style={INPUT_STYLE} />
+                    {errors.numerator && <div style={ERROR_STYLE}>{errors.numerator}</div>}
+                  </div>
+                  <div>
+                    <label style={LABEL_STYLE}>ЗНАМЕНАТЕЛЬ *</label>
+                    <input value={denominatorLabel} onChange={e => setDenominatorLabel(e.target.value)} placeholder="База для расчёта % (план)" style={INPUT_STYLE} />
+                    {errors.denominator && <div style={ERROR_STYLE}>{errors.denominator}</div>}
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}>
+                  <input type="checkbox" checked={cumulative} onChange={e => setCumulative(e.target.checked)} />
+                  Нарастающим итогом
+                  <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>(данные суммируются с начала года)</span>
+                </label>
+              </div>
+              <div style={{ padding: '12px 16px', background: 'rgba(0,255,157,0.04)', border: '1px solid rgba(0,255,157,0.15)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 4 }}>ПРАВИЛА ОЦЕНКИ *</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12, fontFamily: 'Exo 2, sans-serif' }}>
+                  Условия проверяются сверху вниз. Первое совпавшее → балл. Обязательно добавьте правило с баллом 0.
+                </div>
+                <ThresholdRulesEditor rules={thresholds} onChange={setThresholds} />
+                {errors.thresholds && <div style={ERROR_STYLE}>{errors.thresholds}</div>}
+              </div>
+            </>
+          )}
+
+          {/* === MULTI_THRESHOLD: Несколько числовых подпоказателей === */}
+          {formulaType === 'multi_threshold' && (
+            <div>
+              <label style={LABEL_STYLE}>ПОДПОКАЗАТЕЛИ * (минимум 2)</label>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, fontFamily: 'Exo 2, sans-serif' }}>
+                Каждый подпоказатель оценивается отдельно. Все должны быть выполнены (балл 100) — иначе итог 0.
+              </div>
+              {subThresholds.map((sub: any, i: number) => (
+                <div key={i} style={{ padding: '12px 16px', background: 'rgba(180,160,255,0.06)', border: '1px solid rgba(180,160,255,0.2)', borderRadius: 8, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: '#b4a0ff', fontFamily: 'Orbitron, monospace' }}>ПОДПОКАЗАТЕЛЬ {i + 1}</div>
+                    {subThresholds.length > 2 && (
+                      <button onClick={() => setSubThresholds(subThresholds.filter((_: any, idx: number) => idx !== i))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}>🗑</button>
+                    )}
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={LABEL_STYLE}>НАЗВАНИЕ</label>
+                    <input value={sub.name} onChange={e => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, name: e.target.value } : s); setSubThresholds(u) }} placeholder="Название подпоказателя" style={INPUT_STYLE} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+                    <div>
+                      <label style={LABEL_STYLE}>ЧИСЛИТЕЛЬ *</label>
+                      <input value={sub.numerator_label} onChange={e => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, numerator_label: e.target.value } : s); setSubThresholds(u) }} style={INPUT_STYLE} />
+                    </div>
+                    <div>
+                      <label style={LABEL_STYLE}>ЗНАМЕНАТЕЛЬ *</label>
+                      <input value={sub.denominator_label} onChange={e => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, denominator_label: e.target.value } : s); setSubThresholds(u) }} style={INPUT_STYLE} />
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)', marginBottom: 10 }}>
+                    <input type="checkbox" checked={sub.cumulative} onChange={e => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, cumulative: e.target.checked } : s); setSubThresholds(u) }} />
+                    Нарастающим итогом
+                  </label>
+                  <div style={{ fontSize: 11, color: '#b4a0ff', fontFamily: 'Orbitron, monospace', marginBottom: 6 }}>ПРАВИЛА ОЦЕНКИ</div>
+                  <ThresholdRulesEditor
+                    rules={sub.thresholds}
+                    onChange={newRules => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, thresholds: newRules } : s); setSubThresholds(u) }}
+                  />
+                </div>
+              ))}
+              <button
+                onClick={() => setSubThresholds([...subThresholds, { name: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] }])}
+                style={{ background: 'rgba(180,160,255,0.08)', border: '1px solid rgba(180,160,255,0.3)', borderRadius: 6, color: '#b4a0ff', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontFamily: 'Exo 2, sans-serif' }}
+              >
+                + Добавить подпоказатель
+              </button>
+              {errors.subThresholds && <div style={ERROR_STYLE}>{errors.subThresholds}</div>}
+            </div>
+          )}
+
+          {/* === QUARTERLY_THRESHOLD: Квартальные пороги === */}
+          {formulaType === 'quarterly_threshold' && (
+            <>
+              <div style={{ padding: '12px 16px', background: 'rgba(255,140,0,0.04)', border: '1px solid rgba(255,140,0,0.2)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: '#ff8c00', fontFamily: 'Orbitron, monospace', marginBottom: 12 }}>ЧИСЛОВОЙ ПОКАЗАТЕЛЬ</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+                  <div>
+                    <label style={LABEL_STYLE}>ЧИСЛИТЕЛЬ *</label>
+                    <input value={numeratorLabel} onChange={e => setNumeratorLabel(e.target.value)} placeholder="Что считаем (факт)" style={INPUT_STYLE} />
+                    {errors.numerator && <div style={ERROR_STYLE}>{errors.numerator}</div>}
+                  </div>
+                  <div>
+                    <label style={LABEL_STYLE}>ЗНАМЕНАТЕЛЬ *</label>
+                    <input value={denominatorLabel} onChange={e => setDenominatorLabel(e.target.value)} placeholder="База для расчёта % (план)" style={INPUT_STYLE} />
+                    {errors.denominator && <div style={ERROR_STYLE}>{errors.denominator}</div>}
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}>
+                  <input type="checkbox" checked={cumulative} onChange={e => setCumulative(e.target.checked)} />
+                  Нарастающим итогом
+                </label>
+              </div>
+              <div style={{ padding: '12px 16px', background: 'rgba(255,140,0,0.04)', border: '1px solid rgba(255,140,0,0.2)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: '#ff8c00', fontFamily: 'Orbitron, monospace', marginBottom: 4 }}>ПРАВИЛА ПО КВАРТАЛАМ *</div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12, fontFamily: 'Exo 2, sans-serif' }}>
+                  Квартал определяется по дате окончания периода.
+                </div>
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+                  {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map(q => (
+                    <button key={q} onClick={() => setActiveQuarter(q)} style={{ padding: '6px 16px', borderRadius: '6px 6px 0 0', border: `1px solid ${activeQuarter === q ? '#ff8c00' : 'rgba(255,140,0,0.25)'}`, borderBottom: activeQuarter === q ? '1px solid var(--card)' : '1px solid rgba(255,140,0,0.25)', background: activeQuarter === q ? 'rgba(255,140,0,0.15)' : 'transparent', color: activeQuarter === q ? '#ff8c00' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>
+                      {q}
+                    </button>
+                  ))}
+                  <div style={{ flex: 1 }} />
+                  <button onClick={copyQ1ToAll} style={{ background: 'rgba(255,140,0,0.08)', border: '1px solid rgba(255,140,0,0.3)', borderRadius: 6, color: '#ff8c00', cursor: 'pointer', fontSize: 11, padding: '4px 10px', fontFamily: 'Exo 2, sans-serif' }}>
+                    Скопировать Q1 во все →
+                  </button>
+                </div>
+                <ThresholdRulesEditor
+                  rules={quarterlyThresholds[activeQuarter]}
+                  onChange={newRules => setQuarterlyThresholds(prev => ({ ...prev, [activeQuarter]: newRules }))}
+                />
+                {errors.quarterly && <div style={ERROR_STYLE}>{errors.quarterly}</div>}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Кнопки */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--card)' }}>
+          <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={onClose}>Отмена</button>
+          <button className="action-btn btn-fill" style={{ fontSize: 13 }} onClick={handleSubmit} disabled={saving}>
+            {saving ? '...' : isEdit ? 'Сохранить' : '+ Создать показатель'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function KpiIndicatorsTab() {
   const [indicators, setIndicators] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -1818,11 +2358,14 @@ function KpiIndicatorsTab() {
   const [createForm, setCreateForm] = useState({ name: '', formula_type: 'binary_manual', indicator_group: 'Прочие показатели', is_common: false, criterion: '', numerator_label: '', denominator_label: '', cumulative: false })
   const [creating, setCreating] = useState(false)
 
-  useEffect(() => {
+  function fetchIndicators() {
+    setLoading(true)
     api.get('/kpi/indicators?status=all')
       .then(r => setIndicators(Array.isArray(r.data) ? r.data : (r.data.items ?? [])))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { fetchIndicators() }, [])
 
   const groupCounts: Record<string, number> = { all: indicators.length }
   for (const g of INDICATOR_GROUPS_LIST.slice(1)) {
@@ -1879,8 +2422,8 @@ function KpiIndicatorsTab() {
       if (editingIndicator.status === 'draft') {
         payload.name = editForm.name
       }
-      const res = await api.put(`/kpi/indicators/${editingIndicator.id}`, payload)
-      setIndicators(prev => prev.map(ind => ind.id === editingIndicator.id ? res.data : ind))
+      await api.put(`/kpi/indicators/${editingIndicator.id}`, payload)
+      fetchIndicators()
       setEditingIndicator(null)
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка сохранения')
@@ -1903,8 +2446,8 @@ function KpiIndicatorsTab() {
         if (createForm.denominator_label) payload.denominator_label = createForm.denominator_label
         payload.cumulative = createForm.cumulative
       }
-      const res = await api.post('/kpi/indicators', payload)
-      setIndicators(prev => [res.data, ...prev])
+      await api.post('/kpi/indicators', payload)
+      fetchIndicators()
       setShowCreateModal(false)
       setCreateForm({ name: '', formula_type: 'binary_manual', indicator_group: 'Прочие показатели', is_common: false, criterion: '', numerator_label: '', denominator_label: '', cumulative: false })
     } catch (e: any) {
@@ -2124,303 +2667,19 @@ function KpiIndicatorsTab() {
 
     {/* ── МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ ── */}
     {editingIndicator && !editingIndicator._viewOnly && (
-      <div
-        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={e => { if (e.target === e.currentTarget) setEditingIndicator(null) }}
-      >
-        <div
-          className="cyber-card"
-          style={{ maxWidth: 680, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 0, position: 'relative' }}
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Шапка модала */}
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 1 }}>
-            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>РЕДАКТИРОВАТЬ ПОКАЗАТЕЛЬ</div>
-            <button onClick={() => setEditingIndicator(null)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
-          </div>
-
-          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Название */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>НАЗВАНИЕ</label>
-              {editingIndicator.status === 'draft' ? (
-                <textarea
-                  rows={2}
-                  value={editForm.name}
-                  onChange={e => setEditForm((f: any) => ({ ...f, name: e.target.value }))}
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                />
-              ) : (
-                <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, fontWeight: 600, color: 'var(--text)', padding: '8px 0' }}>{editingIndicator.name}</div>
-              )}
-            </div>
-
-            {/* Тип (read-only) и Общий */}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТИП</label>
-                <span style={{
-                  background: `${TYPE_COLORS[editingIndicator.formula_type] || '#888'}22`,
-                  color: TYPE_COLORS[editingIndicator.formula_type] || '#888',
-                  border: `1px solid ${TYPE_COLORS[editingIndicator.formula_type] || '#888'}55`,
-                  borderRadius: 6, padding: '4px 14px', fontSize: 12, fontFamily: 'Orbitron, monospace',
-                }}>
-                  {editingIndicator.formula_type}
-                </span>
-              </div>
-              {editingIndicator.is_common && (
-                <div style={{ paddingTop: 20 }}>
-                  <span className="badge badge-success">Общий показатель</span>
-                </div>
-              )}
-            </div>
-
-            {/* Группа */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ГРУППА</label>
-              <select
-                value={editForm.indicator_group}
-                onChange={e => setEditForm((f: any) => ({ ...f, indicator_group: e.target.value }))}
-                style={{ background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, width: '100%', cursor: 'pointer' }}
-              >
-                {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all').map(g => (
-                  <option key={g.id} value={g.id}>{g.label}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Критерий */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</label>
-              <textarea
-                rows={3}
-                value={editForm.criterion}
-                onChange={e => setEditForm((f: any) => ({ ...f, criterion: e.target.value }))}
-                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            {/* Числитель / Знаменатель / Нарастающим — для числовых типов */}
-            {isNumericType && (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЧИСЛИТЕЛЬ</label>
-                    <input
-                      value={editForm.numerator_label}
-                      onChange={e => setEditForm((f: any) => ({ ...f, numerator_label: e.target.value }))}
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЗНАМЕНАТЕЛЬ</label>
-                    <input
-                      value={editForm.denominator_label}
-                      onChange={e => setEditForm((f: any) => ({ ...f, denominator_label: e.target.value }))}
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}>
-                  <input
-                    type="checkbox"
-                    checked={editForm.cumulative}
-                    onChange={e => setEditForm((f: any) => ({ ...f, cumulative: e.target.checked }))}
-                  />
-                  Нарастающим итогом
-                </label>
-              </>
-            )}
-
-            {/* Пороги — для threshold / multi_threshold */}
-            {(editingIndicator?.formula_type === 'threshold' || editingIndicator?.formula_type === 'multi_threshold') && (
-              <div>
-                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОРОГИ (JSON)</label>
-                <textarea
-                  rows={5}
-                  value={editForm.thresholds}
-                  onChange={e => setEditForm((f: any) => ({ ...f, thresholds: e.target.value }))}
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--accent3)', padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                />
-              </div>
-            )}
-
-            {/* Квартальные пороги */}
-            {editingIndicator?.formula_type === 'quarterly_threshold' && (
-              <div>
-                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>КВАРТАЛЬНЫЕ ПОРОГИ (JSON)</label>
-                <textarea
-                  rows={6}
-                  value={editForm.quarterly_thresholds}
-                  onChange={e => setEditForm((f: any) => ({ ...f, quarterly_thresholds: e.target.value }))}
-                  style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--accent3)', padding: '8px 12px', fontFamily: 'monospace', fontSize: 12, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                />
-              </div>
-            )}
-
-            {/* Тексты при выполнении / невыполнении — для binary + is_common */}
-            {isBinaryType && editingIndicator?.is_common && (
-              <>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТЕКСТ ПРИ ВЫПОЛНЕНИИ</label>
-                  <textarea
-                    rows={2}
-                    value={editForm.common_text_positive}
-                    onChange={e => setEditForm((f: any) => ({ ...f, common_text_positive: e.target.value }))}
-                    style={{ width: '100%', background: 'rgba(0,255,157,0.04)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, color: 'var(--danger)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТЕКСТ ПРИ НЕВЫПОЛНЕНИИ</label>
-                  <textarea
-                    rows={2}
-                    value={editForm.common_text_negative}
-                    onChange={e => setEditForm((f: any) => ({ ...f, common_text_negative: e.target.value }))}
-                    style={{ width: '100%', background: 'rgba(255,59,92,0.04)', border: '1px solid rgba(255,59,92,0.2)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Кнопки */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--card)' }}>
-            <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={() => setEditingIndicator(null)}>
-              Отмена
-            </button>
-            <button className="action-btn btn-fill" style={{ fontSize: 13 }} onClick={handleSave} disabled={saving}>
-              {saving ? '...' : 'Сохранить'}
-            </button>
-          </div>
-        </div>
-      </div>
+      <IndicatorFormModal
+        initialData={editingIndicator}
+        onClose={() => setEditingIndicator(null)}
+        onSuccess={() => { fetchIndicators(); setEditingIndicator(null) }}
+      />
     )}
 
     {/* ── МОДАЛЬНОЕ ОКНО: СОЗДАТЬ ПОКАЗАТЕЛЬ ── */}
     {showCreateModal && (
-      <div
-        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={e => { if (e.target === e.currentTarget) setShowCreateModal(false) }}
-      >
-        <div
-          className="cyber-card"
-          style={{ maxWidth: 620, width: '100%', maxHeight: '90vh', overflowY: 'auto', padding: 0, position: 'relative' }}
-          onClick={e => e.stopPropagation()}
-        >
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 1 }}>
-            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent3)' }}>НОВЫЙ ПОКАЗАТЕЛЬ</div>
-            <button onClick={() => setShowCreateModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
-          </div>
-
-          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Тип */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ТИП *</label>
-              <select
-                value={createForm.formula_type}
-                onChange={e => setCreateForm(f => ({ ...f, formula_type: e.target.value }))}
-                style={{ background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, width: '100%', cursor: 'pointer' }}
-              >
-                {Object.entries(TYPE_LABELS).map(([val, lbl]) => (
-                  <option key={val} value={val}>{lbl} ({val})</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Название */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>НАЗВАНИЕ *</label>
-              <textarea
-                rows={2}
-                value={createForm.name}
-                onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
-                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            {/* Группа + Общий */}
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ГРУППА</label>
-                <select
-                  value={createForm.indicator_group}
-                  onChange={e => setCreateForm(f => ({ ...f, indicator_group: e.target.value }))}
-                  style={{ background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, width: '100%', cursor: 'pointer' }}
-                >
-                  {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all').map(g => (
-                    <option key={g.id} value={g.id}>{g.label}</option>
-                  ))}
-                </select>
-              </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)', paddingBottom: 8, whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
-                  checked={createForm.is_common}
-                  onChange={e => setCreateForm(f => ({ ...f, is_common: e.target.checked }))}
-                />
-                Общий показатель
-              </label>
-            </div>
-
-            {/* Критерий */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ *</label>
-              <textarea
-                rows={3}
-                value={createForm.criterion}
-                onChange={e => setCreateForm(f => ({ ...f, criterion: e.target.value }))}
-                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-              />
-            </div>
-
-            {/* Числовые поля — только для threshold типов */}
-            {['threshold', 'multi_threshold', 'quarterly_threshold'].includes(createForm.formula_type) && (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЧИСЛИТЕЛЬ</label>
-                    <input
-                      value={createForm.numerator_label}
-                      onChange={e => setCreateForm(f => ({ ...f, numerator_label: e.target.value }))}
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ЗНАМЕНАТЕЛЬ</label>
-                    <input
-                      value={createForm.denominator_label}
-                      onChange={e => setCreateForm(f => ({ ...f, denominator_label: e.target.value }))}
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}>
-                  <input
-                    type="checkbox"
-                    checked={createForm.cumulative}
-                    onChange={e => setCreateForm(f => ({ ...f, cumulative: e.target.checked }))}
-                  />
-                  Нарастающим итогом
-                </label>
-              </>
-            )}
-          </div>
-
-          <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--card)' }}>
-            <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={() => setShowCreateModal(false)}>
-              Отмена
-            </button>
-            <button
-              className="action-btn btn-fill"
-              style={{ fontSize: 13 }}
-              onClick={handleCreate}
-              disabled={creating || !createForm.name || !createForm.criterion}
-            >
-              {creating ? '...' : '+ Создать показатель'}
-            </button>
-          </div>
-        </div>
-      </div>
+      <IndicatorFormModal
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={() => { fetchIndicators(); setShowCreateModal(false) }}
+      />
     )}
     </>
   )
