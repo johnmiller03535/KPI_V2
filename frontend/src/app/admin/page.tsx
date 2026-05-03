@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { normalizeUnit, buildDeptMap, sortedDeptKeys } from '@/utils/admin'
@@ -1930,6 +1930,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     ? { Q1: parseThresholds(initCr.quarterly_thresholds.Q1), Q2: parseThresholds(initCr.quarterly_thresholds.Q2), Q3: parseThresholds(initCr.quarterly_thresholds.Q3), Q4: parseThresholds(initCr.quarterly_thresholds.Q4) }
     : emptyQThresholds()
 
+  const formScrollRef = useRef<HTMLDivElement>(null)
   const [formulaType, setFormulaType] = useState(initialData?.formula_type || '')
   const [name, setName] = useState(initialData?.name || '')
   const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || '')
@@ -2058,13 +2059,18 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     } finally { setSaving(false) }
   }
 
-  function copyQ1ToAll() {
-    setQuarterlyThresholds(prev => ({
-      Q1: prev.Q1,
-      Q2: prev.Q1.map(r => ({ ...r })),
-      Q3: prev.Q1.map(r => ({ ...r })),
-      Q4: prev.Q1.map(r => ({ ...r })),
-    }))
+  function copyActiveToAll() {
+    const others = (['Q1', 'Q2', 'Q3', 'Q4'] as const).filter(q => q !== activeQuarter).join(', ')
+    if (!confirm(`Скопировать правила ${activeQuarter} в ${others}? Текущие правила будут заменены.`)) return
+    setQuarterlyThresholds(prev => {
+      const src = prev[activeQuarter].map(r => ({ ...r }))
+      return {
+        Q1: activeQuarter === 'Q1' ? prev.Q1 : src,
+        Q2: activeQuarter === 'Q2' ? prev.Q2 : src,
+        Q3: activeQuarter === 'Q3' ? prev.Q3 : src,
+        Q4: activeQuarter === 'Q4' ? prev.Q4 : src,
+      }
+    })
   }
 
   const title = isEdit ? 'РЕДАКТИРОВАТЬ ПОКАЗАТЕЛЬ' : 'НОВЫЙ ПОКАЗАТЕЛЬ'
@@ -2086,13 +2092,16 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         </div>
 
         {/* Скроллящееся содержимое */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div ref={formScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* ТИП */}
           <div>
             <label style={LABEL_STYLE}>ТИП *</label>
             <select
               value={formulaType}
-              onChange={e => setFormulaType(e.target.value)}
+              onChange={e => {
+                setFormulaType(e.target.value)
+                setTimeout(() => formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50)
+              }}
               disabled={isEdit}
               style={{ ...SELECT_STYLE, opacity: isEdit ? 0.6 : 1 }}
             >
@@ -2322,8 +2331,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                     </button>
                   ))}
                   <div style={{ flex: 1 }} />
-                  <button onClick={copyQ1ToAll} style={{ background: 'rgba(255,140,0,0.08)', border: '1px solid rgba(255,140,0,0.3)', borderRadius: 6, color: '#ff8c00', cursor: 'pointer', fontSize: 11, padding: '4px 10px', fontFamily: 'Exo 2, sans-serif' }}>
-                    Скопировать Q1 во все →
+                  <button onClick={copyActiveToAll} style={{ background: 'rgba(255,140,0,0.08)', border: '1px solid rgba(255,140,0,0.3)', borderRadius: 6, color: '#ff8c00', cursor: 'pointer', fontSize: 11, padding: '4px 10px', fontFamily: 'Exo 2, sans-serif' }}>
+                    Скопировать {activeQuarter} во все →
                   </button>
                 </div>
                 <ThresholdRulesEditor
