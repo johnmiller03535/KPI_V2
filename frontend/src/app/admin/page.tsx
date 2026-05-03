@@ -1932,7 +1932,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
 
   const [formulaType, setFormulaType] = useState(initialData?.formula_type || '')
   const [name, setName] = useState(initialData?.name || '')
-  const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || 'Прочие показатели')
+  const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || '')
   const [isCommon, setIsCommon] = useState(initialData?.is_common || false)
   const [criterion, setCriterion] = useState(initCr.criterion || '')
   const [numeratorLabel, setNumeratorLabel] = useState(initCr.numerator_label || '')
@@ -2076,16 +2076,17 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     >
       <div
         className="cyber-card"
-        style={{ width: 700, maxWidth: '95vw', maxHeight: '88vh', overflowY: 'auto', padding: 0 }}
+        style={{ width: 700, maxWidth: '95vw', maxHeight: '88vh', padding: 0, display: 'flex', flexDirection: 'column' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Шапка */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'var(--card)', zIndex: 1 }}>
+        {/* Шапка — фиксированная */}
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: 'var(--card)' }}>
           <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent3)' }}>{title}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* Скроллящееся содержимое */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* ТИП */}
           <div>
             <label style={LABEL_STYLE}>ТИП *</label>
@@ -2134,6 +2135,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 onChange={e => setIndicatorGroup(e.target.value)}
                 style={SELECT_STYLE}
               >
+                <option value="">— Выберите группу —</option>
                 {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all' && g.id !== 'Общие показатели').map(g => (
                   <option key={g.id} value={g.id}>{g.label}</option>
                 ))}
@@ -2334,8 +2336,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           )}
         </div>
 
-        {/* Кнопки */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, justifyContent: 'flex-end', position: 'sticky', bottom: 0, background: 'var(--card)' }}>
+        {/* Кнопки — фиксированный футер */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(0,229,255,0.2)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: 'var(--card)' }}>
           <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={onClose}>Отмена</button>
           <button className="action-btn btn-fill" style={{ fontSize: 13 }} onClick={handleSubmit} disabled={saving}>
             {saving ? '...' : isEdit ? 'Сохранить' : '+ Создать показатель'}
