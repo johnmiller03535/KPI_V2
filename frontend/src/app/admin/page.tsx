@@ -2071,7 +2071,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 24px 24px' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div

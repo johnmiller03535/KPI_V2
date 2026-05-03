@@ -182,6 +182,7 @@ async def create_indicator(
         formula_type=body.formula_type,
         is_common=body.is_common,
         is_editable_per_role=body.is_editable_per_role,
+        indicator_group=body.indicator_group,
         status="draft",
         version=1,
         created_by=current_user.login,
