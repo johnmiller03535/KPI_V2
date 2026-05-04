@@ -1907,8 +1907,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   // Parse initialData into form state
   const initCr = initialData?.criteria?.[0] || {}
   const initSubBinary = initialData?.formula_type === 'multi_binary' && initCr.sub_indicators
-    ? initCr.sub_indicators.map((s: any, i: number) => ({ description: s.description || '', order: s.order ?? i }))
-    : [{ description: '', order: 0 }, { description: '', order: 1 }]
+    ? initCr.sub_indicators.map((s: any, i: number) => ({ description: s.description || '', order: s.order ?? i, sub_criterion: s.sub_criterion || '' }))
+    : [{ description: '', order: 0, sub_criterion: '' }, { description: '', order: 1, sub_criterion: '' }]
 
   function parseThresholds(t: any[]): ThresholdRule[] {
     if (!t || !t.length) return [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }]
@@ -2030,6 +2030,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     if (formulaType === 'multi_binary') {
       base.sub_indicators = subBinaryItems.map((s: any, i: number) => ({
         description: s.description, order: i, sub_type: 'sub_binary',
+        ...(s.sub_criterion?.trim() ? { sub_criterion: s.sub_criterion.trim() } : {}),
       }))
     }
     if (['threshold', 'quarterly_threshold', 'multi_threshold', 'absolute_threshold'].includes(formulaType)) {
@@ -2252,27 +2253,44 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 Каждый подпоказатель руководитель оценит отдельно ✅/❌. Невыполнение хотя бы одного = 0 баллов.
               </div>
               {subBinaryItems.map((item: any, i: number) => (
-                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20 }}>{i + 1}.</span>
-                  <input
-                    value={item.description}
-                    onChange={e => {
-                      const updated = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, description: e.target.value } : s)
-                      setSubBinaryItems(updated)
-                    }}
-                    placeholder="Описание подпоказателя..."
-                    style={{ ...INPUT_STYLE, flex: 1 }}
-                  />
-                  {subBinaryItems.length > 2 && (
-                    <button
-                      onClick={() => setSubBinaryItems(subBinaryItems.filter((_: any, idx: number) => idx !== i))}
-                      style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}
-                    >🗑</button>
-                  )}
+                <div key={i} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20 }}>{i + 1}.</span>
+                    <input
+                      value={item.description}
+                      onChange={e => {
+                        const updated = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, description: e.target.value } : s)
+                        setSubBinaryItems(updated)
+                      }}
+                      placeholder="Описание (кратко)..."
+                      style={{ ...INPUT_STYLE, flex: 1 }}
+                    />
+                    {subBinaryItems.length > 2 && (
+                      <button
+                        onClick={() => setSubBinaryItems(subBinaryItems.filter((_: any, idx: number) => idx !== i))}
+                        style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}
+                      >🗑</button>
+                    )}
+                  </div>
+                  <div style={{ paddingLeft: 28 }}>
+                    <textarea
+                      rows={2}
+                      value={item.sub_criterion || ''}
+                      onChange={e => {
+                        const updated = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, sub_criterion: e.target.value } : s)
+                        setSubBinaryItems(updated)
+                      }}
+                      placeholder="Критерий оценки (как проверять)..."
+                      style={{ ...INPUT_STYLE, resize: 'vertical', fontSize: 12 }}
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Exo 2, sans-serif' }}>
+                      Как именно руководитель проверяет этот подпоказатель
+                    </div>
+                  </div>
                 </div>
               ))}
               <button
-                onClick={() => setSubBinaryItems([...subBinaryItems, { description: '', order: subBinaryItems.length }])}
+                onClick={() => setSubBinaryItems([...subBinaryItems, { description: '', order: subBinaryItems.length, sub_criterion: '' }])}
                 style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontFamily: 'Exo 2, sans-serif' }}
               >
                 + Добавить подпоказатель
@@ -2803,9 +2821,16 @@ function KpiIndicatorsTab() {
                         .slice()
                         .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
                         .map((sub: any, si: number) => (
-                          <div key={si} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 6, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
-                            <span style={{ color: '#ff6b9d', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20, marginTop: 2 }}>{si + 1}.</span>
-                            <span style={{ color: 'var(--text)' }}>{sub.description}</span>
+                          <div key={si} style={{ marginBottom: 8, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                              <span style={{ color: '#ff6b9d', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20, marginTop: 2 }}>{si + 1}.</span>
+                              <span style={{ color: 'var(--text)' }}>{sub.description}</span>
+                            </div>
+                            {sub.sub_criterion && (
+                              <div style={{ paddingLeft: 30, marginTop: 3, color: 'var(--text-dim)', fontSize: 12, fontStyle: 'italic' }}>
+                                ↳ {sub.sub_criterion}
+                              </div>
+                            )}
                           </div>
                         ))
                       }
