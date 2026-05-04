@@ -2101,7 +2101,9 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           is_quarterly: payload.is_quarterly,
           formula_desc: payload.formula_desc,
         }
-        if (initialData.status === 'draft') updatePayload.name = payload.name
+        // TODO: АУДИТ 2026-05-04 — ограничение временно снято для полного редактирования
+        // Вернуть после завершения аудита: if (initialData.status === 'draft') updatePayload.name = payload.name
+        updatePayload.name = payload.name
         await api.put(`/kpi/indicators/${initialData.id}`, updatePayload)
       } else {
         await api.post('/kpi/indicators', payload)
@@ -2174,17 +2176,14 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           {/* НАЗВАНИЕ */}
           <div>
             <label style={LABEL_STYLE}>НАЗВАНИЕ *</label>
+            {/* TODO: АУДИТ 2026-05-04 — disabled снят временно, вернуть после аудита */}
             <textarea
               rows={3}
               value={name}
               onChange={e => setName(e.target.value)}
-              disabled={isEdit && initialData?.status !== 'draft'}
               placeholder="Полное официальное название показателя из методики"
-              style={{ ...INPUT_STYLE, resize: 'vertical', opacity: (isEdit && initialData?.status !== 'draft') ? 0.6 : 1 }}
+              style={{ ...INPUT_STYLE, resize: 'vertical' }}
             />
-            {isEdit && initialData?.status !== 'draft' && (
-              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>Название можно менять только у показателей в статусе draft</div>
-            )}
             {errors.name && <div style={ERROR_STYLE}>{errors.name}</div>}
           </div>
 
