@@ -2792,8 +2792,29 @@ function KpiIndicatorsTab() {
                     </div>
                   )}
 
-                  {/* ПРАВИЛА ОЦЕНКИ */}
-                  {(crThresholds.length > 0 || Object.keys(crQThresholds).length > 0) && (
+                  {/* ПОДПОКАЗАТЕЛИ — только для multi_binary */}
+                  {vi.formula_type === 'multi_binary' && cr.sub_indicators?.length > 0 && (
+                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                      <div style={{ fontSize: 11, color: '#ff6b9d', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОДПОКАЗАТЕЛИ</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 10 }}>
+                        Руководитель оценивает каждый отдельно. Все должны быть ✅
+                      </div>
+                      {cr.sub_indicators
+                        .slice()
+                        .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+                        .map((sub: any, si: number) => (
+                          <div key={si} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 6, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                            <span style={{ color: '#ff6b9d', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20, marginTop: 2 }}>{si + 1}.</span>
+                            <span style={{ color: 'var(--text)' }}>{sub.description}</span>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  )}
+
+                  {/* ПРАВИЛА ОЦЕНКИ — только для threshold-типов, не для binary */}
+                  {['threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(vi.formula_type) &&
+                    (crThresholds.length > 0 || Object.keys(crQThresholds).length > 0) && (
                     <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
                       <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 10, letterSpacing: 1 }}>ПРАВИЛА ОЦЕНКИ</div>
                       {vi.formula_type === 'quarterly_threshold' && Object.keys(crQThresholds).length > 0
@@ -2834,7 +2855,16 @@ function KpiIndicatorsTab() {
       <IndicatorFormModal
         initialData={editingIndicator}
         onClose={() => setEditingIndicator(null)}
-        onSuccess={() => { fetchIndicators(); setEditingIndicator(null) }}
+        onSuccess={() => {
+          // БАГ 2: закрываем форму, но если просмотр был открыт для того же показателя —
+          // viewIndicatorId остаётся, и после fetchIndicators() покажет свежие данные
+          const savedId = editingIndicator?.id
+          fetchIndicators()
+          setEditingIndicator(null)
+          // Если редактирование открыто не из просмотра — оставить просмотр закрытым
+          // Если открыто из просмотра (viewIndicatorId === savedId) — он останется открытым
+          if (viewIndicatorId && viewIndicatorId !== savedId) setViewIndicatorId(null)
+        }}
       />
     )}
 
