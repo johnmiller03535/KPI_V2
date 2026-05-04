@@ -2132,7 +2132,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 24px 24px' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '72px 24px 24px', overflowY: 'auto' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
@@ -2506,6 +2506,7 @@ function KpiIndicatorsTab() {
   const [activeGroup, setActiveGroup] = useState('all')
   const [search, setSearch] = useState('')
   const [editingIndicator, setEditingIndicator] = useState<any>(null)
+  const [viewIndicatorId, setViewIndicatorId] = useState<string|null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   function fetchIndicators() {
@@ -2516,6 +2517,19 @@ function KpiIndicatorsTab() {
   }
 
   useEffect(() => { fetchIndicators() }, [])
+
+  // ESC закрывает модалки
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setViewIndicatorId(null)
+        setEditingIndicator(null)
+        setShowCreateModal(false)
+      }
+    }
+    window.addEventListener('keydown', handleEsc)
+    return () => window.removeEventListener('keydown', handleEsc)
+  }, [])
 
   const groupCounts: Record<string, number> = { all: indicators.length }
   for (const g of INDICATOR_GROUPS_LIST.slice(1)) {
@@ -2666,7 +2680,7 @@ function KpiIndicatorsTab() {
                     <button
                       className="action-btn btn-view"
                       style={{ fontSize: 11, padding: '4px 10px' }}
-                      onClick={() => setEditingIndicator({ ...ind, _viewOnly: true })}
+                      onClick={() => setViewIndicatorId(ind.id)}
                     >
                       Просмотр
                     </button>
@@ -2687,63 +2701,96 @@ function KpiIndicatorsTab() {
     </div>
 
     {/* ── МОДАЛЬНОЕ ОКНО: ПРОСМОТР (viewOnly) ── */}
-    {editingIndicator?._viewOnly && (
-      <div
-        style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={() => setEditingIndicator(null)}
-      >
-        <div
-          className="cyber-card"
-          style={{ maxWidth: 640, width: '100%', maxHeight: '80vh', overflowY: 'auto', padding: 28, position: 'relative' }}
-          onClick={e => e.stopPropagation()}
-        >
-          <button onClick={() => setEditingIndicator(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
-          <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)', marginBottom: 8 }}>ПОКАЗАТЕЛЬ</div>
-          <div style={{ fontWeight: 700, fontSize: 17, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, paddingRight: 32 }}>{editingIndicator.name}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-            <span style={{
-              background: `${TYPE_COLORS[editingIndicator.formula_type] || '#888'}22`,
-              color: TYPE_COLORS[editingIndicator.formula_type] || '#888',
-              border: `1px solid ${TYPE_COLORS[editingIndicator.formula_type] || '#888'}55`,
-              borderRadius: 6, padding: '3px 12px', fontSize: 12, fontFamily: 'Orbitron, monospace',
-            }}>{editingIndicator.formula_type}</span>
-            <span className={STATUS_BADGE[editingIndicator.status] || 'badge badge-dim'}>{editingIndicator.status}</span>
-            {editingIndicator.is_common && <span className="badge badge-success">Общий</span>}
-            {editingIndicator.indicator_group && <span className="badge badge-info">{editingIndicator.indicator_group}</span>}
-          </div>
-          {editingIndicator.criteria?.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>КРИТЕРИЙ ОЦЕНКИ</div>
-              {editingIndicator.criteria.map((cr: any, i: number) => (
-                <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
-                  <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: 8 }}>{cr.criterion}</div>
-                  {cr.formula_desc && (
-                    <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 8, padding: '6px 10px', background: 'rgba(0,229,255,0.03)', borderLeft: '2px solid rgba(0,229,255,0.2)', borderRadius: '0 4px 4px 0' }}>
-                      {cr.formula_desc}
-                    </div>
-                  )}
-                  {cr.numerator_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Числитель: {cr.numerator_label}{cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}</div>}
-                  {cr.value_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Поле ввода: {cr.value_label}</div>}
-                  {cr.thresholds?.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>
-                      {cr.thresholds.map((t: any, ti: number) => (
-                        <div key={ti} style={{ fontSize: 12, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 3 }}>
-                          {t.op}{t.value}% → {t.score} баллов
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+    {viewIndicatorId && (() => {
+      // БАГ 2: всегда берём свежие данные из indicators (не кэшированный snapshot)
+      const vi = indicators.find(i => i.id === viewIndicatorId)
+      if (!vi) return null
+      const isAbsolute = vi.formula_type === 'absolute_threshold'
+
+      function renderThresholds(thresholds: any[]) {
+        return thresholds.map((t: any, ti: number) => {
+          // Пороги хранятся как {condition: ">=67", score: 100} или {operator,value,score}
+          let label = ''
+          if (t.condition) {
+            const m = String(t.condition).match(/^(>=|<=|>|<|==?)(.+)$/)
+            label = m ? `${m[1]}${m[2]}` : t.condition
+          } else {
+            label = `${t.operator ?? ''}${t.value ?? ''}`
+          }
+          return (
+            <div key={ti} style={{ fontSize: 12, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 3 }}>
+              {label}{isAbsolute ? '' : '%'} → {t.score} баллов
             </div>
-          )}
-          <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
-            Используется в <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{editingIndicator.used_in_cards_count}</span> карточках
+          )
+        })
+      }
+
+      return (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80, paddingBottom: 24, paddingLeft: 24, paddingRight: 24, overflowY: 'auto' }}
+          onClick={() => setViewIndicatorId(null)}
+        >
+          <div
+            className="cyber-card"
+            style={{ maxWidth: 640, width: '100%', overflowY: 'auto', padding: 28, position: 'relative' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button onClick={() => setViewIndicatorId(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)', marginBottom: 8 }}>ПОКАЗАТЕЛЬ</div>
+            <div style={{ fontWeight: 700, fontSize: 17, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, paddingRight: 32 }}>{vi.name}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+              <span style={{
+                background: `${TYPE_COLORS[vi.formula_type] || '#888'}22`,
+                color: TYPE_COLORS[vi.formula_type] || '#888',
+                border: `1px solid ${TYPE_COLORS[vi.formula_type] || '#888'}55`,
+                borderRadius: 6, padding: '3px 12px', fontSize: 12, fontFamily: 'Orbitron, monospace',
+              }}>{TYPE_LABELS[vi.formula_type] || vi.formula_type}</span>
+              <span className={STATUS_BADGE[vi.status] || 'badge badge-dim'}>{vi.status}</span>
+              {vi.is_common && <span className="badge badge-success">Общий</span>}
+              {vi.indicator_group && <span className="badge badge-info">{vi.indicator_group}</span>}
+            </div>
+            {vi.criteria?.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>КРИТЕРИЙ ОЦЕНКИ</div>
+                {vi.criteria.map((cr: any, i: number) => (
+                  <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
+                    <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: 8 }}>{cr.criterion}</div>
+                    {cr.formula_desc && (
+                      <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 8, padding: '6px 10px', background: 'rgba(0,229,255,0.03)', borderLeft: '2px solid rgba(0,229,255,0.2)', borderRadius: '0 4px 4px 0' }}>
+                        {cr.formula_desc}
+                      </div>
+                    )}
+                    {/* БАГ 3: для absolute_threshold показываем value_label, для остальных — числитель/знаменатель */}
+                    {isAbsolute
+                      ? cr.value_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Поле ввода: <strong>{cr.value_label}</strong></div>
+                      : cr.numerator_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Числитель: {cr.numerator_label}{cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}</div>
+                    }
+                    {cr.thresholds?.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>
+                        {renderThresholds(cr.thresholds)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                Используется в <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{vi.used_in_cards_count}</span> карточках
+              </div>
+              <button
+                className="action-btn btn-fill"
+                style={{ fontSize: 12 }}
+                onClick={() => { setViewIndicatorId(null); setEditingIndicator(vi) }}
+              >
+                Редактировать
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )
+    })()}
 
     {/* ── МОДАЛЬНОЕ ОКНО: РЕДАКТИРОВАНИЕ ── */}
     {editingIndicator && !editingIndicator._viewOnly && (
