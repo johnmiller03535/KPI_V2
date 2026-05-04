@@ -2132,22 +2132,22 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '72px 24px 24px', overflowY: 'auto' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', overflowY: 'auto', padding: '80px 24px 40px' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
         className="cyber-card"
-        style={{ width: 700, maxWidth: '95vw', maxHeight: '88vh', padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ width: 700, maxWidth: '95vw', margin: '0 auto', padding: 0 }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Шапка — фиксированная */}
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, background: 'var(--card)' }}>
+        {/* Шапка */}
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card)' }}>
           <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent3)' }}>{title}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
         </div>
 
         {/* Скроллящееся содержимое */}
-        <div ref={formScrollRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div ref={formScrollRef} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* ТИП */}
           <div>
             <label style={LABEL_STYLE}>ТИП *</label>
@@ -2489,7 +2489,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         </div>
 
         {/* Кнопки — фиксированный футер */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(0,229,255,0.2)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0, background: 'var(--card)' }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(0,229,255,0.2)', display: 'flex', gap: 8, justifyContent: 'flex-end', background: 'var(--card)' }}>
           <button className="action-btn btn-view" style={{ fontSize: 13 }} onClick={onClose}>Отмена</button>
           <button className="action-btn btn-fill" style={{ fontSize: 13 }} onClick={handleSubmit} disabled={saving}>
             {saving ? '...' : isEdit ? 'Сохранить' : '+ Создать показатель'}
@@ -2709,17 +2709,21 @@ function KpiIndicatorsTab() {
 
       function renderThresholds(thresholds: any[]) {
         return thresholds.map((t: any, ti: number) => {
-          // Пороги хранятся как {condition: ">=67", score: 100} или {operator,value,score}
-          let label = ''
+          // Пороги: {condition: ">=67", score: 100} или {operator, value, score}
+          let op = '', val = ''
           if (t.condition) {
             const m = String(t.condition).match(/^(>=|<=|>|<|==?)(.+)$/)
-            label = m ? `${m[1]}${m[2]}` : t.condition
+            op = m?.[1] ?? ''; val = m?.[2] ?? t.condition
           } else {
-            label = `${t.operator ?? ''}${t.value ?? ''}`
+            op = t.operator ?? ''; val = String(t.value ?? '')
           }
+          const suffix = isAbsolute ? '' : '%'
           return (
-            <div key={ti} style={{ fontSize: 12, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 3 }}>
-              {label}{isAbsolute ? '' : '%'} → {t.score} баллов
+            <div key={ti} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, fontFamily: 'Orbitron, monospace', color: 'var(--accent3)', marginBottom: 4 }}>
+              <span style={{ minWidth: 28, textAlign: 'right', color: 'var(--text-dim)' }}>{op}</span>
+              <span style={{ minWidth: 40 }}>{val}{suffix}</span>
+              <span style={{ color: 'var(--text-dim)' }}>→</span>
+              <span style={{ color: t.score > 0 ? 'var(--accent3)' : 'var(--danger)' }}>{t.score} баллов</span>
             </div>
           )
         })
@@ -2727,55 +2731,88 @@ function KpiIndicatorsTab() {
 
       return (
         <div
-          style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80, paddingBottom: 24, paddingLeft: 24, paddingRight: 24, overflowY: 'auto' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', overflowY: 'auto', padding: '80px 24px 40px' }}
           onClick={() => setViewIndicatorId(null)}
         >
           <div
             className="cyber-card"
-            style={{ maxWidth: 640, width: '100%', overflowY: 'auto', padding: 28, position: 'relative' }}
+            style={{ maxWidth: 640, width: '100%', margin: '0 auto', padding: 0 }}
             onClick={e => e.stopPropagation()}
           >
-            <button onClick={() => setViewIndicatorId(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
-            <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)', marginBottom: 8 }}>ПОКАЗАТЕЛЬ</div>
-            <div style={{ fontWeight: 700, fontSize: 17, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, paddingRight: 32 }}>{vi.name}</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-              <span style={{
-                background: `${TYPE_COLORS[vi.formula_type] || '#888'}22`,
-                color: TYPE_COLORS[vi.formula_type] || '#888',
-                border: `1px solid ${TYPE_COLORS[vi.formula_type] || '#888'}55`,
-                borderRadius: 6, padding: '3px 12px', fontSize: 12, fontFamily: 'Orbitron, monospace',
-              }}>{TYPE_LABELS[vi.formula_type] || vi.formula_type}</span>
-              <span className={STATUS_BADGE[vi.status] || 'badge badge-dim'}>{vi.status}</span>
-              {vi.is_common && <span className="badge badge-success">Общий</span>}
-              {vi.indicator_group && <span className="badge badge-info">{vi.indicator_group}</span>}
+            {/* Шапка карточки */}
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 11, color: 'var(--accent)', marginBottom: 8, letterSpacing: 1 }}>ПОКАЗАТЕЛЬ</div>
+                <button onClick={() => setViewIndicatorId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ fontWeight: 700, fontSize: 16, fontFamily: 'Exo 2, sans-serif', marginBottom: 12, lineHeight: 1.4 }}>{vi.name}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{
+                  background: `${TYPE_COLORS[vi.formula_type] || '#888'}22`,
+                  color: TYPE_COLORS[vi.formula_type] || '#888',
+                  border: `1px solid ${TYPE_COLORS[vi.formula_type] || '#888'}55`,
+                  borderRadius: 6, padding: '3px 10px', fontSize: 11, fontFamily: 'Orbitron, monospace',
+                }}>{TYPE_LABELS[vi.formula_type] || vi.formula_type}</span>
+                <span className={STATUS_BADGE[vi.status] || 'badge badge-dim'}>{vi.status}</span>
+                {vi.is_common && <span className="badge badge-success">Общий</span>}
+                {vi.indicator_group && <span className="badge badge-info" style={{ fontSize: 11 }}>{vi.indicator_group}</span>}
+              </div>
             </div>
-            {vi.criteria?.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>КРИТЕРИЙ ОЦЕНКИ</div>
-                {vi.criteria.map((cr: any, i: number) => (
-                  <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
-                    <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: 8 }}>{cr.criterion}</div>
+
+            {vi.criteria?.map((cr: any, i: number) => {
+              const isNumeric = ['threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(vi.formula_type)
+              const crThresholds: any[] = cr.thresholds || []
+              const crQThresholds: Record<string, any[]> = cr.quarterly_thresholds || {}
+
+              return (
+                <div key={i}>
+                  {/* КРИТЕРИЙ ОЦЕНКИ */}
+                  <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</div>
+                    <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, lineHeight: 1.5, color: 'var(--text)' }}>{cr.criterion}</div>
                     {cr.formula_desc && (
-                      <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 8, padding: '6px 10px', background: 'rgba(0,229,255,0.03)', borderLeft: '2px solid rgba(0,229,255,0.2)', borderRadius: '0 4px 4px 0' }}>
-                        {cr.formula_desc}
-                      </div>
-                    )}
-                    {/* БАГ 3: для absolute_threshold показываем value_label, для остальных — числитель/знаменатель */}
-                    {isAbsolute
-                      ? cr.value_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Поле ввода: <strong>{cr.value_label}</strong></div>
-                      : cr.numerator_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Числитель: {cr.numerator_label}{cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}</div>
-                    }
-                    {cr.thresholds?.length > 0 && (
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>
-                        {renderThresholds(cr.thresholds)}
+                      <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(0,229,255,0.03)', borderLeft: '2px solid rgba(0,229,255,0.3)', borderRadius: '0 4px 4px 0', fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', lineHeight: 1.5 }}>
+                        💡 {cr.formula_desc}
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+
+                  {/* ЧИСЛОВОЙ ПОКАЗАТЕЛЬ — только для threshold-типов */}
+                  {isNumeric && (cr.numerator_label || cr.value_label || cr.cumulative) && (
+                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                      <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>ЧИСЛОВОЙ ПОКАЗАТЕЛЬ</div>
+                      {isAbsolute
+                        ? cr.value_label && <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>Поле ввода: <span style={{ color: 'var(--text)' }}>{cr.value_label}</span></div>
+                        : <>
+                            {cr.numerator_label && <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 4 }}>Числитель: <span style={{ color: 'var(--text)' }}>{cr.numerator_label}</span></div>}
+                            {cr.denominator_label && <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>Знаменатель: <span style={{ color: 'var(--text)' }}>{cr.denominator_label}</span></div>}
+                          </>
+                      }
+                      {cr.cumulative && <div style={{ marginTop: 6, fontSize: 12, color: 'var(--accent3)', fontFamily: 'Exo 2, sans-serif' }}>↗ Нарастающим итогом</div>}
+                    </div>
+                  )}
+
+                  {/* ПРАВИЛА ОЦЕНКИ */}
+                  {(crThresholds.length > 0 || Object.keys(crQThresholds).length > 0) && (
+                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                      <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 10, letterSpacing: 1 }}>ПРАВИЛА ОЦЕНКИ</div>
+                      {vi.formula_type === 'quarterly_threshold' && Object.keys(crQThresholds).length > 0
+                        ? (['Q1','Q2','Q3','Q4'] as const).map(q => crQThresholds[q]?.length > 0 && (
+                            <div key={q} style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 4 }}>{q}</div>
+                              {renderThresholds(crQThresholds[q])}
+                            </div>
+                          ))
+                        : renderThresholds(crThresholds)
+                      }
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Футер */}
+            <div style={{ padding: '14px 24px', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
                 Используется в <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{vi.used_in_cards_count}</span> карточках
               </div>
