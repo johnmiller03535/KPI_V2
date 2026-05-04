@@ -45,6 +45,7 @@ class KpiCriterion(Base):
     order = Column(Integer, default=0, nullable=False)
     value_label = Column(String, nullable=True)              # для absolute_threshold: подпись поля ввода
     is_quarterly = Column(Boolean, default=False, nullable=False)  # для absolute_threshold с квартальными порогами
+    formula_desc = Column(Text, nullable=True)               # методика расчёта в человекочитаемом виде
     cumulative = Column(Boolean, default=False, nullable=False)
     plan_value = Column(String, nullable=True)
     common_text_positive = Column(Text, nullable=True)

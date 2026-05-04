@@ -1954,6 +1954,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const [subThresholds, setSubThresholds] = useState(initSubThresholds)
   const [quarterlyThresholds, setQuarterlyThresholds] = useState<Record<string, ThresholdRule[]>>(initQThresholds)
   const [activeQuarter, setActiveQuarter] = useState<'Q1'|'Q2'|'Q3'|'Q4'>('Q1')
+  const [formulaDesc, setFormulaDesc] = useState(initCr.formula_desc || '')
   const [valueLabel, setValueLabel] = useState(initCr.value_label || '')
   const [isQuarterly, setIsQuarterly] = useState(initCr.is_quarterly || false)
   const [absoluteThresholds, setAbsoluteThresholds] = useState<ThresholdRule[]>(parseThresholds(initCr.thresholds))
@@ -2031,6 +2032,9 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         description: s.description, order: i, sub_type: 'sub_binary',
       }))
     }
+    if (['threshold', 'quarterly_threshold', 'multi_threshold', 'absolute_threshold'].includes(formulaType)) {
+      if (formulaDesc.trim()) base.formula_desc = formulaDesc.trim()
+    }
     if (['threshold', 'quarterly_threshold'].includes(formulaType)) {
       base.numerator_label = numeratorLabel.trim()
       base.denominator_label = denominatorLabel.trim()
@@ -2095,6 +2099,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           quarterly_thresholds: payload.quarterly_thresholds,
           value_label: payload.value_label,
           is_quarterly: payload.is_quarterly,
+          formula_desc: payload.formula_desc,
         }
         if (initialData.status === 'draft') updatePayload.name = payload.name
         await api.put(`/kpi/indicators/${initialData.id}`, updatePayload)
@@ -2222,6 +2227,23 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
             />
             {errors.criterion && <div style={ERROR_STYLE}>{errors.criterion}</div>}
           </div>
+
+          {/* МЕТОДИКА РАСЧЁТА — только для числовых типов */}
+          {['threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(formulaType) && (
+            <div>
+              <label style={LABEL_STYLE}>МЕТОДИКА РАСЧЁТА</label>
+              <textarea
+                rows={3}
+                value={formulaDesc}
+                onChange={e => setFormulaDesc(e.target.value)}
+                placeholder="Опишите условие выполнения показателя в понятном виде. Например: «Отсутствие более 2-х повторных согласований ЛНА»"
+                style={{ ...INPUT_STYLE, resize: 'vertical' }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+                Необязательное поле. Отображается сотруднику при заполнении KPI-формы.
+              </div>
+            </div>
+          )}
 
           {/* === MULTI_BINARY: Подпоказатели === */}
           {formulaType === 'multi_binary' && (
@@ -2696,7 +2718,13 @@ function KpiIndicatorsTab() {
               {editingIndicator.criteria.map((cr: any, i: number) => (
                 <div key={i} style={{ background: 'rgba(0,229,255,0.04)', border: '1px solid rgba(0,229,255,0.12)', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
                   <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, marginBottom: 8 }}>{cr.criterion}</div>
+                  {cr.formula_desc && (
+                    <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', marginBottom: 8, padding: '6px 10px', background: 'rgba(0,229,255,0.03)', borderLeft: '2px solid rgba(0,229,255,0.2)', borderRadius: '0 4px 4px 0' }}>
+                      {cr.formula_desc}
+                    </div>
+                  )}
                   {cr.numerator_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Числитель: {cr.numerator_label}{cr.denominator_label && ` / Знаменатель: ${cr.denominator_label}`}</div>}
+                  {cr.value_label && <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>Поле ввода: {cr.value_label}</div>}
                   {cr.thresholds?.length > 0 && (
                     <div style={{ marginTop: 8 }}>
                       <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>ПОРОГИ</div>

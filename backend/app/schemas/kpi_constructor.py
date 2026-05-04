@@ -28,6 +28,7 @@ class IndicatorCreate(BaseModel):
     common_text_negative: Optional[str] = None
     value_label: Optional[str] = None           # для absolute_threshold: подпись поля ввода
     is_quarterly: bool = False                  # для absolute_threshold: квартальные пороги
+    formula_desc: Optional[str] = None          # методика расчёта (для threshold-типов)
 
 
 class IndicatorUpdate(BaseModel):
@@ -49,6 +50,7 @@ class IndicatorUpdate(BaseModel):
     common_text_negative: Optional[str] = None
     value_label: Optional[str] = None
     is_quarterly: Optional[bool] = None
+    formula_desc: Optional[str] = None
 
 
 class CriterionResponse(BaseModel):
@@ -68,6 +70,7 @@ class CriterionResponse(BaseModel):
     order: int = 0
     value_label: Optional[str] = None
     is_quarterly: bool = False
+    formula_desc: Optional[str] = None
     created_at: datetime
 
     class Config:

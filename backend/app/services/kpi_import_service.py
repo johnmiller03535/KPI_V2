@@ -241,6 +241,7 @@ class KpiImportService:
                     "plan_value": r["plan_value"] or None,
                     "common_text_positive": pos_text,
                     "common_text_negative": neg_text,
+                    "formula_desc": r["formula_desc"] or None,
                     "created_at": datetime.now(timezone.utc),
                 }
                 criterion_key_to_id[crit_key] = crit_id

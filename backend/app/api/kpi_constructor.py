@@ -204,6 +204,7 @@ async def create_indicator(
         common_text_negative=body.common_text_negative,
         value_label=body.value_label,
         is_quarterly=body.is_quarterly,
+        formula_desc=body.formula_desc,
     )
     db.add(criterion)
     await db.commit()
@@ -254,7 +255,7 @@ async def update_indicator(
         "criterion", "numerator_label", "denominator_label", "thresholds",
         "sub_indicators", "quarterly_thresholds", "cumulative",
         "plan_value", "common_text_positive", "common_text_negative",
-        "value_label", "is_quarterly",
+        "value_label", "is_quarterly", "formula_desc",
     }
     has_crit_update = any(getattr(body, f) is not None for f in crit_fields)
     if has_crit_update:
@@ -287,6 +288,8 @@ async def update_indicator(
                 cr.value_label = body.value_label
             if body.is_quarterly is not None:
                 cr.is_quarterly = body.is_quarterly
+            if body.formula_desc is not None:
+                cr.formula_desc = body.formula_desc
 
     await db.commit()
     await db.refresh(ind)
@@ -729,6 +732,7 @@ async def import_from_xlsx(
             plan_value=cr_data["plan_value"],
             common_text_positive=cr_data["common_text_positive"],
             common_text_negative=cr_data["common_text_negative"],
+            formula_desc=cr_data.get("formula_desc"),
         )
         db.add(cr)
         await db.flush()  # flush сразу — card_indicators ссылаются на criterion_id
