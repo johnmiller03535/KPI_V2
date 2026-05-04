@@ -39,7 +39,17 @@
       "Bash(docker cp:*)",
       "Bash(npx tsc:*)",
       "Bash(./node_modules/.bin/tsc --noEmit)",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/next build:*)",
+      "Bash(ls:*)",
+      "Bash(git rm:*)",
+      "Bash(python -c ':*)",
+      "Bash(python:*)",
+      "Bash(pip3 show:*)",
+      "Bash(pip show:*)",
+      "Bash(npx --yes tsc --noEmit)",
+      "Bash(/Users/valeriy/KPI_V2/frontend/node_modules/.bin/tsc --noEmit --project /Users/valeriy/KPI_V2/frontend/tsconfig.json)",
+      "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)"
     ]
   }
 }
