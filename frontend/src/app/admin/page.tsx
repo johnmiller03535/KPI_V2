@@ -2101,9 +2101,9 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           is_quarterly: payload.is_quarterly,
           formula_desc: payload.formula_desc,
         }
-        // TODO: АУДИТ 2026-05-04 — ограничение временно снято для полного редактирования
-        // Вернуть после завершения аудита: if (initialData.status === 'draft') updatePayload.name = payload.name
+        // TODO: АУДИТ 2026-05-04 — ограничения временно сняты
         updatePayload.name = payload.name
+        updatePayload.formula_type = payload.formula_type
         await api.put(`/kpi/indicators/${initialData.id}`, updatePayload)
       } else {
         await api.post('/kpi/indicators', payload)
@@ -2157,8 +2157,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 setFormulaType(e.target.value)
                 setTimeout(() => formScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50)
               }}
-              disabled={isEdit}
-              style={{ ...SELECT_STYLE, opacity: isEdit ? 0.6 : 1 }}
+              // TODO: АУДИТ 2026-05-04 — смена типа разрешена для всех статусов, вернуть: disabled={isEdit}
+              style={{ ...SELECT_STYLE }}
             >
               <option value="">— Выберите тип показателя —</option>
               {Object.entries(TYPE_LABELS).map(([val, lbl]) => (

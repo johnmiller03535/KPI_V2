@@ -34,6 +34,8 @@ class IndicatorCreate(BaseModel):
 class IndicatorUpdate(BaseModel):
     code: Optional[str] = None
     name: Optional[str] = None
+    # TODO: АУДИТ 2026-05-04 — смена типа разрешена временно
+    formula_type: Optional[str] = None
     is_editable_per_role: Optional[bool] = None
     is_common: Optional[bool] = None            # только hr, admin
     indicator_group: Optional[str] = None

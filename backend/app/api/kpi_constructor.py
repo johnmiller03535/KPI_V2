@@ -244,6 +244,9 @@ async def update_indicator(
         ind.code = body.code
     if body.name is not None:
         ind.name = body.name
+    # TODO: АУДИТ 2026-05-04 — смена formula_type разрешена временно
+    if body.formula_type is not None:
+        ind.formula_type = body.formula_type
     if body.is_editable_per_role is not None:
         ind.is_editable_per_role = body.is_editable_per_role
     if body.is_common is not None:
