@@ -15,6 +15,7 @@ class IndicatorCreate(BaseModel):
     is_common: bool = False
     is_editable_per_role: bool = True
     indicator_group: Optional[str] = None
+    unit_name: Optional[str] = None              # Управление-владелец показателя
     # Критерий (создаётся вместе с показателем)
     criterion: str
     numerator_label: Optional[str] = None
@@ -39,6 +40,7 @@ class IndicatorUpdate(BaseModel):
     is_editable_per_role: Optional[bool] = None
     is_common: Optional[bool] = None            # только hr, admin
     indicator_group: Optional[str] = None
+    unit_name: Optional[str] = None
     # Обновление критерия
     criterion: Optional[str] = None
     numerator_label: Optional[str] = None
@@ -87,6 +89,7 @@ class IndicatorResponse(BaseModel):
     is_common: bool
     is_editable_per_role: bool
     indicator_group: Optional[str] = None
+    unit_name: Optional[str] = None
     status: str
     version: int
     valid_from: Optional[date]

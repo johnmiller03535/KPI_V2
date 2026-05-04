@@ -20,6 +20,7 @@ class KpiIndicator(Base):
     is_common = Column(Boolean, default=False, nullable=False)
     is_editable_per_role = Column(Boolean, default=True, nullable=False)
     indicator_group = Column(String, nullable=True)  # Classification group
+    unit_name = Column(String, nullable=True)          # Управление-владелец показателя (NULL = общий)
     status = Column(String, default="draft", nullable=False)    # draft | active | archived
     version = Column(Integer, default=1, nullable=False)
     valid_from = Column(Date, nullable=True)

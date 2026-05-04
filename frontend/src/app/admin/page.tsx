@@ -1168,6 +1168,8 @@ function KpiTab() {
   const [addWeight, setAddWeight] = useState('')
   const [addingSaving, setAddingSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [viewIndId, setViewIndId] = useState<string | null>(null)
+  const [addGroupFilter, setAddGroupFilter] = useState('')
   // Wizard
   const [showWizard, setShowWizard] = useState(false)
   const [wizardStep, setWizardStep] = useState(1)
@@ -1308,9 +1310,8 @@ function KpiTab() {
   }
 
   const addFiltered = allIndicators.filter(ind => {
-    const alreadyIn = editedIndicators.some(ci => ci.indicator_id === ind.id)
-    if (alreadyIn) return false
     if (addSearch && !ind.name.toLowerCase().includes(addSearch.toLowerCase())) return false
+    if (addGroupFilter && (ind.indicator_group || 'Прочие показатели') !== addGroupFilter) return false
     return true
   })
 
@@ -1532,7 +1533,16 @@ function KpiTab() {
                             </div>
                           </td>
                         )}
-                        <td style={{ ...TD, fontWeight: 600 }}>{ci.indicator_name || '—'}</td>
+                        <td style={{ ...TD, fontWeight: 600 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>{ci.indicator_name || '—'}</span>
+                            <button
+                              onClick={() => setViewIndId(ci.indicator_id)}
+                              title="Просмотр показателя"
+                              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, lineHeight: 1, opacity: 0.7, padding: '0 2px' }}
+                            >👁</button>
+                          </div>
+                        </td>
                         <td style={TD}>
                           {ci.indicator_formula_type && (
                             <span style={{
@@ -1610,46 +1620,67 @@ function KpiTab() {
     {showAddModal && (
       <div
         style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={e => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight('') } }}
+        onClick={e => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight(''); setAddGroupFilter('') } }}
       >
-        <div className="cyber-card" style={{ maxWidth: 560, width: '100%', maxHeight: '75vh', display: 'flex', flexDirection: 'column', gap: 0, padding: 0 }}
+        <div className="cyber-card" style={{ maxWidth: 600, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 0, padding: 0 }}
           onClick={e => e.stopPropagation()}
         >
           <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>ДОБАВИТЬ ПОКАЗАТЕЛЬ</div>
-            <button onClick={() => { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight('') }}
+            <button onClick={() => { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight(''); setAddGroupFilter('') }}
               style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
           </div>
-          <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 12, overflow: 'hidden' }}>
-            <input
-              type="text"
-              placeholder="Поиск показателя..."
-              value={addSearch}
-              onChange={e => setAddSearch(e.target.value)}
-              style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none' }}
-            />
-            <div style={{ flex: 1, overflowY: 'auto', maxHeight: 300, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {addFiltered.map(ind => (
+          <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                placeholder="Поиск по названию..."
+                value={addSearch}
+                onChange={e => setAddSearch(e.target.value)}
+                style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none' }}
+              />
+              <select
+                value={addGroupFilter}
+                onChange={e => setAddGroupFilter(e.target.value)}
+                style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', cursor: 'pointer', minWidth: 160 }}
+              >
+                <option value="">Все группы</option>
+                {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all').map(g => (
+                  <option key={g.id} value={g.id}>{g.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: 340, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {addFiltered.map(ind => {
+                const alreadyIn = editedIndicators.some(ci => ci.indicator_id === ind.id)
+                return (
                 <div
                   key={ind.id}
-                  onClick={() => setAddSelected(ind)}
+                  onClick={() => !alreadyIn && setAddSelected(ind)}
                   style={{
-                    padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
-                    background: addSelected?.id === ind.id ? 'rgba(0,229,255,0.1)' : 'rgba(255,255,255,0.03)',
+                    padding: '10px 14px', borderRadius: 8, cursor: alreadyIn ? 'default' : 'pointer',
+                    background: addSelected?.id === ind.id ? 'rgba(0,229,255,0.1)' : alreadyIn ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.03)',
                     border: addSelected?.id === ind.id ? '1px solid rgba(0,229,255,0.4)' : '1px solid transparent',
                     fontFamily: 'Exo 2, sans-serif', fontSize: 13,
+                    opacity: alreadyIn ? 0.45 : 1,
                     transition: 'all 0.15s',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   }}
                 >
-                  <div style={{ fontWeight: 600, marginBottom: 2 }}>{ind.name}</div>
-                  <div style={{ fontSize: 11, color: TYPE_COLORS[ind.formula_type] || '#888', fontFamily: 'Orbitron, monospace' }}>
-                    {TYPE_LABELS[ind.formula_type] || ind.formula_type}
-                    {ind.is_common && ' · Общий'}
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{ind.name}</div>
+                    <div style={{ fontSize: 11, color: TYPE_COLORS[ind.formula_type] || '#888', fontFamily: 'Orbitron, monospace' }}>
+                      {TYPE_LABELS[ind.formula_type] || ind.formula_type}
+                      {ind.is_common && ' · Общий'}
+                      {ind.indicator_group && <span style={{ color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}> · {ind.indicator_group}</span>}
+                    </div>
                   </div>
+                  {alreadyIn && <span style={{ fontSize: 11, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', whiteSpace: 'nowrap' }}>✓ В карточке</span>}
                 </div>
-              ))}
+                )
+              })}
               {addFiltered.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 24, fontSize: 13 }}>Нет доступных показателей</div>
+                <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 24, fontSize: 13 }}>Нет показателей</div>
               )}
             </div>
             {addSelected && (
@@ -1678,6 +1709,57 @@ function KpiTab() {
         </div>
       </div>
     )}
+
+    {/* ── ПРОСМОТР ПОКАЗАТЕЛЯ ИЗ КАРТОЧКИ ── */}
+    {viewIndId && (() => {
+      const vi = allIndicators.find((i: any) => i.id === viewIndId)
+      if (!vi) return null
+      const cr = vi.criteria?.[0] || {}
+      return (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', overflowY: 'auto', padding: '80px 24px 40px' }}
+          onClick={() => setViewIndId(null)}
+        >
+          <div className="cyber-card" style={{ maxWidth: 580, width: '100%', margin: '0 auto', padding: 0 }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОКАЗАТЕЛЬ</div>
+                <div style={{ fontWeight: 700, fontSize: 15, fontFamily: 'Exo 2, sans-serif', lineHeight: 1.4 }}>{vi.name}</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                  <span style={{ background: `${TYPE_COLORS[vi.formula_type] || '#888'}22`, color: TYPE_COLORS[vi.formula_type] || '#888', border: `1px solid ${TYPE_COLORS[vi.formula_type] || '#888'}55`, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontFamily: 'Orbitron, monospace' }}>{TYPE_LABELS[vi.formula_type] || vi.formula_type}</span>
+                  {vi.is_common && <span className="badge badge-success">Общий</span>}
+                  {vi.unit_name && <span className="badge badge-dim">🏢 {vi.unit_name}</span>}
+                </div>
+              </div>
+              <button onClick={() => setViewIndId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+              <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</div>
+              <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, lineHeight: 1.5 }}>{cr.criterion}</div>
+            </div>
+            {vi.formula_type === 'multi_binary' && cr.sub_indicators?.length > 0 && (
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                <div style={{ fontSize: 11, color: '#ff6b9d', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>ПОДПОКАЗАТЕЛИ</div>
+                {cr.sub_indicators.slice().sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0)).map((sub: any, si: number) => (
+                  <div key={si} style={{ marginBottom: 6, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <span style={{ color: '#ff6b9d', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20 }}>{si + 1}.</span>
+                      <span>{sub.description}</span>
+                    </div>
+                    {sub.sub_criterion && <div style={{ paddingLeft: 28, marginTop: 2, color: 'var(--text-dim)', fontSize: 12, fontStyle: 'italic' }}>↳ {sub.sub_criterion}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ padding: '14px 24px', display: 'flex', justifyContent: 'flex-end' }}>
+              <span style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                Используется в <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{vi.used_in_cards_count ?? 0}</span> карточках
+              </span>
+            </div>
+          </div>
+        </div>
+      )
+    })()}
 
     {/* ── МАСТЕР СОЗДАНИЯ КАРТОЧКИ ── */}
     {showWizard && (
@@ -1802,6 +1884,17 @@ function KpiTab() {
 // ════════════════════════════════════════════════════════════════════
 // KPI-ПОКАЗАТЕЛИ TAB
 // ════════════════════════════════════════════════════════════════════
+
+const UNIT_LIST = [
+  'Руководство',
+  'Правовое управление',
+  'Управление закупочной деятельности',
+  'Управление закупочных процедур',
+  'Управление анализа и автоматизации данных',
+  'Единая архивная служба',
+  'Центр технической разработки',
+  'Организационный отдел',
+]
 
 const INDICATOR_GROUPS_LIST = [
   { id: 'all', label: '📋 Все' },
@@ -1944,7 +2037,10 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const [formulaType, setFormulaType] = useState(initialData?.formula_type || '')
   const [name, setName] = useState(initialData?.name || '')
   const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || '')
+  const [unitName, setUnitName] = useState(initialData?.unit_name || '')
   const [isCommon, setIsCommon] = useState(initialData?.is_common || false)
+  const [positiveText, setPositiveText] = useState(initCr.common_text_positive || '')
+  const [negativeText, setNegativeText] = useState(initCr.common_text_negative || '')
   const [criterion, setCriterion] = useState(initCr.criterion || '')
   const [numeratorLabel, setNumeratorLabel] = useState(initCr.numerator_label || '')
   const [denominatorLabel, setDenominatorLabel] = useState(initCr.denominator_label || '')
@@ -2024,8 +2120,11 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
       name: name.trim(),
       formula_type: formulaType,
       indicator_group: indicatorGroup,
+      unit_name: unitName || null,
       is_common: isCommon,
       criterion: criterion.trim(),
+      common_text_positive: positiveText.trim() || null,
+      common_text_negative: negativeText.trim() || null,
     }
     if (formulaType === 'multi_binary') {
       base.sub_indicators = subBinaryItems.map((s: any, i: number) => ({
@@ -2090,6 +2189,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         // For edit, only send updatable fields
         const updatePayload: any = {
           indicator_group: payload.indicator_group,
+          unit_name: payload.unit_name,
           is_common: payload.is_common,
           criterion: payload.criterion,
           numerator_label: payload.numerator_label,
@@ -2101,6 +2201,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           value_label: payload.value_label,
           is_quarterly: payload.is_quarterly,
           formula_desc: payload.formula_desc,
+          common_text_positive: payload.common_text_positive,
+          common_text_negative: payload.common_text_negative,
         }
         // TODO: АУДИТ 2026-05-04 — ограничения временно сняты
         updatePayload.name = payload.name
@@ -2215,6 +2317,18 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
             </div>
           </div>
 
+          {/* УПРАВЛЕНИЕ */}
+          <div>
+            <label style={LABEL_STYLE}>УПРАВЛЕНИЕ</label>
+            <select value={unitName} onChange={e => setUnitName(e.target.value)} style={SELECT_STYLE}>
+              <option value="">— Без привязки к управлению (общий) —</option>
+              {UNIT_LIST.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+              Управление которому специфически принадлежит показатель
+            </div>
+          </div>
+
           {/* КРИТЕРИЙ */}
           <div>
             <label style={LABEL_STYLE}>КРИТЕРИЙ ОЦЕНКИ *</label>
@@ -2227,6 +2341,36 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
             />
             {errors.criterion && <div style={ERROR_STYLE}>{errors.criterion}</div>}
           </div>
+
+          {/* ТЕКСТ ДЛЯ ОТЧЁТА — binary_manual и multi_binary */}
+          {['binary_manual', 'multi_binary'].includes(formulaType) && (
+            <div style={{ padding: '14px 16px', background: 'rgba(0,255,157,0.03)', border: '1px solid rgba(0,255,157,0.12)', borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 12, letterSpacing: 1 }}>ТЕКСТ ДЛЯ ОТЧЁТА</div>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 12 }}>
+                Эти тексты будут использованы при генерации PDF-отчёта. Необязательное поле.
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ ...LABEL_STYLE, color: 'var(--accent3)' }}>При выполнении ✅</label>
+                <textarea
+                  rows={2}
+                  value={positiveText}
+                  onChange={e => setPositiveText(e.target.value)}
+                  placeholder="Показатель выполнен. Нарушений трудового распорядка не зафиксировано."
+                  style={{ ...INPUT_STYLE, resize: 'vertical', fontSize: 12 }}
+                />
+              </div>
+              <div>
+                <label style={{ ...LABEL_STYLE, color: 'var(--danger)' }}>При невыполнении ❌</label>
+                <textarea
+                  rows={2}
+                  value={negativeText}
+                  onChange={e => setNegativeText(e.target.value)}
+                  placeholder="Показатель не выполнен. Зафиксировано нарушение трудового распорядка."
+                  style={{ ...INPUT_STYLE, resize: 'vertical', fontSize: 12 }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* МЕТОДИКА РАСЧЁТА — только для числовых типов */}
           {['threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(formulaType) && (
@@ -2522,6 +2666,8 @@ function KpiIndicatorsTab() {
   const [indicators, setIndicators] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [activeGroup, setActiveGroup] = useState('all')
+  const [activeUnit, setActiveUnit] = useState('all')
+  const [panelMode, setPanelMode] = useState<'groups'|'units'>('groups')
   const [search, setSearch] = useState('')
   const [editingIndicator, setEditingIndicator] = useState<any>(null)
   const [viewIndicatorId, setViewIndicatorId] = useState<string|null>(null)
@@ -2554,8 +2700,22 @@ function KpiIndicatorsTab() {
     groupCounts[g.id] = indicators.filter(ind => (ind.indicator_group || 'Прочие показатели') === g.id).length
   }
 
+  // Уникальные управления из данных
+  const unitCounts: Record<string, number> = { all: indicators.length }
+  for (const u of UNIT_LIST) {
+    unitCounts[u] = indicators.filter(ind => ind.unit_name === u).length
+  }
+  unitCounts['—'] = indicators.filter(ind => !ind.unit_name).length
+
   const filtered = indicators.filter(ind => {
-    if (activeGroup !== 'all' && (ind.indicator_group || 'Прочие показатели') !== activeGroup) return false
+    if (panelMode === 'groups') {
+      if (activeGroup !== 'all' && (ind.indicator_group || 'Прочие показатели') !== activeGroup) return false
+    } else {
+      if (activeUnit !== 'all') {
+        if (activeUnit === '—' && ind.unit_name) return false
+        if (activeUnit !== '—' && ind.unit_name !== activeUnit) return false
+      }
+    }
     if (search && !ind.name.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
@@ -2601,38 +2761,63 @@ function KpiIndicatorsTab() {
 
       {/* Двухколоночный layout с внутренним скроллом */}
       <div style={{ display: 'flex', height: 'calc(100vh - 200px)', overflow: 'hidden' }}>
-        {/* Сайдбар групп */}
-        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto' }}>
-          {INDICATOR_GROUPS_LIST.map(g => (
+        {/* Сайдбар групп / управлений */}
+        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          {/* Переключатель режимов */}
+          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+            {(['groups', 'units'] as const).map(mode => (
+              <button key={mode} onClick={() => { setPanelMode(mode); setActiveGroup('all'); setActiveUnit('all') }}
+                style={{ flex: 1, padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, fontFamily: 'Orbitron, monospace', letterSpacing: 0.5,
+                  color: panelMode === mode ? 'var(--accent)' : 'var(--text-dim)',
+                  borderBottom: panelMode === mode ? '2px solid var(--accent)' : '2px solid transparent',
+                }}
+              >
+                {mode === 'groups' ? 'ПО ГРУППАМ' : 'ПО УПРАВЛ.'}
+              </button>
+            ))}
+          </div>
+          {/* Список */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+          {panelMode === 'groups' ? INDICATOR_GROUPS_LIST.map(g => (
             <div
               key={g.id}
               onClick={() => setActiveGroup(g.id)}
               style={{
-                padding: '10px 16px',
-                cursor: 'pointer',
+                padding: '10px 16px', cursor: 'pointer',
                 borderLeft: activeGroup === g.id ? '3px solid var(--accent)' : '3px solid transparent',
                 background: activeGroup === g.id ? 'rgba(0,229,255,0.06)' : 'transparent',
                 color: activeGroup === g.id ? 'var(--accent)' : 'rgba(232,234,246,0.65)',
-                fontFamily: 'Exo 2, sans-serif',
-                fontSize: 12,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                transition: 'all 0.15s',
-                borderRadius: '0 6px 6px 0',
+                fontFamily: 'Exo 2, sans-serif', fontSize: 12,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                transition: 'all 0.15s', borderRadius: '0 6px 6px 0',
               }}
             >
               <span>{g.label}</span>
-              <span style={{
-                background: activeGroup === g.id ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)',
-                color: activeGroup === g.id ? 'var(--accent)' : 'var(--text-dim)',
-                borderRadius: 10, padding: '1px 7px', fontSize: 10,
-                fontFamily: 'Orbitron, monospace',
-              }}>
+              <span style={{ background: activeGroup === g.id ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)', color: activeGroup === g.id ? 'var(--accent)' : 'var(--text-dim)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontFamily: 'Orbitron, monospace' }}>
                 {groupCounts[g.id] ?? 0}
               </span>
             </div>
+          )) : [{ id: 'all', label: '📋 Все' }, ...UNIT_LIST.map(u => ({ id: u, label: `🏢 ${u}` })), { id: '—', label: '⬜ Без управления' }].map(u => (
+            <div
+              key={u.id}
+              onClick={() => setActiveUnit(u.id)}
+              style={{
+                padding: '10px 16px', cursor: 'pointer',
+                borderLeft: activeUnit === u.id ? '3px solid var(--accent)' : '3px solid transparent',
+                background: activeUnit === u.id ? 'rgba(0,229,255,0.06)' : 'transparent',
+                color: activeUnit === u.id ? 'var(--accent)' : 'rgba(232,234,246,0.65)',
+                fontFamily: 'Exo 2, sans-serif', fontSize: 12,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                transition: 'all 0.15s', borderRadius: '0 6px 6px 0',
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.label}</span>
+              <span style={{ background: activeUnit === u.id ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)', color: activeUnit === u.id ? 'var(--accent)' : 'var(--text-dim)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontFamily: 'Orbitron, monospace', flexShrink: 0, marginLeft: 4 }}>
+                {unitCounts[u.id] ?? 0}
+              </span>
+            </div>
           ))}
+          </div>
         </div>
 
         {/* Основная область */}
@@ -2678,6 +2863,7 @@ function KpiIndicatorsTab() {
                     <div style={{ fontWeight: 600, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>{ind.name}</div>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 2 }}>
                       {ind.is_common && <span style={{ fontSize: 10, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace' }}>ОБЩИЙ</span>}
+                      {ind.unit_name && <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>🏢 {ind.unit_name}</span>}
                       {isInactive && <span style={{ fontSize: 10, color: '#888', fontFamily: 'Orbitron, monospace', background: 'rgba(255,255,255,0.06)', borderRadius: 4, padding: '0 5px' }}>{ind.status}</span>}
                     </div>
                   </div>
@@ -2774,6 +2960,7 @@ function KpiIndicatorsTab() {
                 <span className={STATUS_BADGE[vi.status] || 'badge badge-dim'}>{vi.status}</span>
                 {vi.is_common && <span className="badge badge-success">Общий</span>}
                 {vi.indicator_group && <span className="badge badge-info" style={{ fontSize: 11 }}>{vi.indicator_group}</span>}
+                {vi.unit_name && <span className="badge badge-dim" style={{ fontSize: 11 }}>🏢 {vi.unit_name}</span>}
               </div>
             </div>
 
@@ -2834,6 +3021,26 @@ function KpiIndicatorsTab() {
                           </div>
                         ))
                       }
+                    </div>
+                  )}
+
+                  {/* ТЕКСТ В ОТЧЁТЕ — binary_manual/multi_binary */}
+                  {['binary_manual', 'multi_binary'].includes(vi.formula_type) &&
+                    (cr.common_text_positive || cr.common_text_negative) && (
+                    <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                      <div style={{ fontSize: 11, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 10, letterSpacing: 1 }}>ТЕКСТ В ОТЧЁТЕ</div>
+                      {cr.common_text_positive && (
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 6, fontFamily: 'Exo 2, sans-serif', fontSize: 13, alignItems: 'flex-start' }}>
+                          <span style={{ color: 'var(--accent3)', minWidth: 20 }}>✅</span>
+                          <span style={{ color: 'var(--text)' }}>{cr.common_text_positive}</span>
+                        </div>
+                      )}
+                      {cr.common_text_negative && (
+                        <div style={{ display: 'flex', gap: 8, fontFamily: 'Exo 2, sans-serif', fontSize: 13, alignItems: 'flex-start' }}>
+                          <span style={{ color: 'var(--danger)', minWidth: 20 }}>❌</span>
+                          <span style={{ color: 'var(--text)' }}>{cr.common_text_negative}</span>
+                        </div>
+                      )}
                     </div>
                   )}
 

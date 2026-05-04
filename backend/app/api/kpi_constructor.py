@@ -183,6 +183,7 @@ async def create_indicator(
         is_common=body.is_common,
         is_editable_per_role=body.is_editable_per_role,
         indicator_group=body.indicator_group,
+        unit_name=body.unit_name,
         status="draft",
         version=1,
         created_by=current_user.login,
@@ -253,6 +254,8 @@ async def update_indicator(
         ind.is_common = body.is_common
     if body.indicator_group is not None:
         ind.indicator_group = body.indicator_group
+    if body.unit_name is not None:
+        ind.unit_name = body.unit_name
 
     # Обновить первый критерий если переданы поля
     crit_fields = {
