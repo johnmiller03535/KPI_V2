@@ -1131,6 +1131,7 @@ const TYPE_LABELS: Record<string, string> = {
   threshold: 'Порог',
   multi_threshold: 'Мульти-порог',
   quarterly_threshold: 'Квартальный',
+  absolute_threshold: 'Абсолютный',
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -1140,6 +1141,7 @@ const TYPE_COLORS: Record<string, string> = {
   threshold: 'var(--accent3)',
   multi_threshold: '#b4a0ff',
   quarterly_threshold: '#ff8c00',
+  absolute_threshold: '#ff9500',
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -1198,6 +1200,12 @@ function KpiTab() {
   }, [selectedPosId])
 
   const editedWeight = editedIndicators.reduce((s, ci) => s + (ci.override_weight ?? ci.weight ?? 0), 0)
+  const cardsByUnit = cards.reduce((acc: Record<string, any[]>, c: any) => {
+    const u = c.unit || 'Без подразделения'
+    if (!acc[u]) acc[u] = []
+    acc[u].push(c)
+    return acc
+  }, {})
 
   // Нормализованная группировка по верхнеуровневым подразделениям
   const kpiDeptMap = buildDeptMap(cards.map((c: any) => ({ unit: c.unit })))
@@ -1816,6 +1824,7 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
   threshold: 'Сотрудник вводит факт/план, система считает % и применяет пороги',
   multi_threshold: 'Несколько числовых подпоказателей — нужно выполнить все',
   quarterly_threshold: 'Числовой с разными порогами для каждого квартала',
+  absolute_threshold: 'Сотрудник вводит одно число. Система сравнивает его с порогами напрямую (без деления)',
 }
 
 // ─── SHARED STYLES ────────────────────────────────────────────────────────────
@@ -1838,9 +1847,10 @@ const ERROR_STYLE: React.CSSProperties = {
 // ─── THRESHOLD RULES EDITOR ───────────────────────────────────────────────────
 type ThresholdRule = { operator: string; value: string; score: string }
 
-function ThresholdRulesEditor({ rules, onChange }: {
+function ThresholdRulesEditor({ rules, onChange, showPercent = true }: {
   rules: ThresholdRule[]
   onChange: (rules: ThresholdRule[]) => void
+  showPercent?: boolean
 }) {
   function update(i: number, field: keyof ThresholdRule, val: string) {
     const updated = rules.map((r, idx) => idx === i ? { ...r, [field]: val } : r)
@@ -1863,10 +1873,10 @@ function ThresholdRulesEditor({ rules, onChange }: {
           <input
             value={rule.value}
             onChange={e => update(i, 'value', e.target.value)}
-            placeholder="0–100"
+            placeholder={showPercent ? '0–100' : 'значение'}
             style={{ ...INPUT_STYLE, width: 80 }}
           />
-          <span style={{ color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>%  →</span>
+          <span style={{ color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>{showPercent ? '%' : ''} →</span>
           <input
             value={rule.score}
             onChange={e => update(i, 'score', e.target.value)}
@@ -1944,6 +1954,14 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const [subThresholds, setSubThresholds] = useState(initSubThresholds)
   const [quarterlyThresholds, setQuarterlyThresholds] = useState<Record<string, ThresholdRule[]>>(initQThresholds)
   const [activeQuarter, setActiveQuarter] = useState<'Q1'|'Q2'|'Q3'|'Q4'>('Q1')
+  const [valueLabel, setValueLabel] = useState(initCr.value_label || '')
+  const [isQuarterly, setIsQuarterly] = useState(initCr.is_quarterly || false)
+  const [absoluteThresholds, setAbsoluteThresholds] = useState<ThresholdRule[]>(parseThresholds(initCr.thresholds))
+  const [absoluteQThresholds, setAbsoluteQThresholds] = useState<Record<string, ThresholdRule[]>>(
+    initialData?.formula_type === 'absolute_threshold' && initCr.quarterly_thresholds
+      ? { Q1: parseThresholds(initCr.quarterly_thresholds.Q1), Q2: parseThresholds(initCr.quarterly_thresholds.Q2), Q3: parseThresholds(initCr.quarterly_thresholds.Q3), Q4: parseThresholds(initCr.quarterly_thresholds.Q4) }
+      : emptyQThresholds()
+  )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -1982,6 +2000,18 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     if (formulaType === 'quarterly_threshold') {
       for (const q of ['Q1', 'Q2', 'Q3', 'Q4'] as const) {
         if (!quarterlyThresholds[q].length) { e.quarterly = `Заполните правила для квартала ${q}`; break }
+      }
+    }
+    if (formulaType === 'absolute_threshold') {
+      if (!valueLabel.trim()) e.valueLabel = 'Укажите подпись поля ввода'
+      if (isQuarterly) {
+        for (const q of ['Q1', 'Q2', 'Q3', 'Q4'] as const) {
+          if (!absoluteQThresholds[q].length) { e.absoluteRules = `Заполните правила для квартала ${q}`; break }
+        }
+      } else {
+        if (!absoluteThresholds.length) e.absoluteRules = 'Добавьте хотя бы одно правило оценки'
+        else if (!absoluteThresholds.some((r: ThresholdRule) => r.score === '0')) e.absoluteRules = 'Добавьте правило для минимального балла (0)'
+        else if (absoluteThresholds.some((r: ThresholdRule) => !r.value || isNaN(parseFloat(r.value)))) e.absoluteRules = 'Введите числовые значения порогов'
       }
     }
     setErrors(e)
@@ -2027,6 +2057,22 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         thresholds: sub.thresholds.map((r: ThresholdRule) => ({ condition: `${r.operator}${r.value}`, score: parseFloat(r.score) })),
       }))
     }
+    if (formulaType === 'absolute_threshold') {
+      base.value_label = valueLabel.trim()
+      base.is_quarterly = isQuarterly
+      base.cumulative = cumulative
+      if (isQuarterly) {
+        base.quarterly_thresholds = Object.fromEntries(
+          (['Q1', 'Q2', 'Q3', 'Q4'] as const).map(q => [
+            q, absoluteQThresholds[q].map((r: ThresholdRule) => ({ condition: `${r.operator}${r.value}`, score: parseFloat(r.score) }))
+          ])
+        )
+      } else {
+        base.thresholds = absoluteThresholds.map((r: ThresholdRule) => ({
+          condition: `${r.operator}${r.value}`, score: parseFloat(r.score),
+        }))
+      }
+    }
     return base
   }
 
@@ -2047,6 +2093,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           thresholds: payload.thresholds,
           sub_indicators: payload.sub_indicators,
           quarterly_thresholds: payload.quarterly_thresholds,
+          value_label: payload.value_label,
+          is_quarterly: payload.is_quarterly,
         }
         if (initialData.status === 'draft') updatePayload.name = payload.name
         await api.put(`/kpi/indicators/${initialData.id}`, updatePayload)
@@ -2341,6 +2389,80 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 />
                 {errors.quarterly && <div style={ERROR_STYLE}>{errors.quarterly}</div>}
               </div>
+            </>
+          )}
+
+          {/* ─── absolute_threshold ─── */}
+          {formulaType === 'absolute_threshold' && (
+            <>
+              <div style={{ padding: '12px 16px', background: 'rgba(255,149,0,0.04)', border: '1px solid rgba(255,149,0,0.2)', borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: '#ff9500', fontFamily: 'Orbitron, monospace', marginBottom: 12 }}>ЧИСЛОВОЙ ПОКАЗАТЕЛЬ (АБСОЛЮТНЫЙ)</div>
+                <label style={LABEL_STYLE}>ПОДПИСЬ ПОЛЯ ВВОДА *</label>
+                <input
+                  value={valueLabel}
+                  onChange={e => setValueLabel(e.target.value)}
+                  placeholder="Например: «Количество материалов», «Среднее число участников»"
+                  style={INPUT_STYLE}
+                />
+                {errors.valueLabel && <div style={ERROR_STYLE}>{errors.valueLabel}</div>}
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+                  Как называется вводимое сотрудником значение
+                </div>
+                <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                    <input type="checkbox" checked={cumulative} onChange={e => setCumulative(e.target.checked)} />
+                    Нарастающим итогом
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
+                    <input type="checkbox" checked={isQuarterly} onChange={e => setIsQuarterly(e.target.checked)} />
+                    Квартальные пороги
+                  </label>
+                </div>
+              </div>
+
+              {!isQuarterly && (
+                <div style={{ padding: '12px 16px', background: 'rgba(255,149,0,0.04)', border: '1px solid rgba(255,149,0,0.2)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: '#ff9500', fontFamily: 'Orbitron, monospace', marginBottom: 8 }}>ПРАВИЛА ОЦЕНКИ *</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12, fontFamily: 'Exo 2, sans-serif' }}>
+                    Сравнение идёт с абсолютным значением (не с процентом).
+                  </div>
+                  <ThresholdRulesEditor rules={absoluteThresholds} onChange={setAbsoluteThresholds} showPercent={false} />
+                  {errors.absoluteRules && <div style={ERROR_STYLE}>{errors.absoluteRules}</div>}
+                </div>
+              )}
+
+              {isQuarterly && (
+                <div style={{ padding: '12px 16px', background: 'rgba(255,149,0,0.04)', border: '1px solid rgba(255,149,0,0.2)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, color: '#ff9500', fontFamily: 'Orbitron, monospace', marginBottom: 4 }}>ПРАВИЛА ПО КВАРТАЛАМ *</div>
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+                    {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map(q => (
+                      <button key={q} onClick={() => setActiveQuarter(q)} style={{ padding: '6px 16px', borderRadius: '6px 6px 0 0', border: `1px solid ${activeQuarter === q ? '#ff9500' : 'rgba(255,149,0,0.25)'}`, borderBottom: activeQuarter === q ? '1px solid var(--card)' : '1px solid rgba(255,149,0,0.25)', background: activeQuarter === q ? 'rgba(255,149,0,0.15)' : 'transparent', color: activeQuarter === q ? '#ff9500' : 'var(--text-dim)', cursor: 'pointer', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>
+                        {q}
+                      </button>
+                    ))}
+                    <div style={{ flex: 1 }} />
+                    <button
+                      onClick={() => {
+                        const others = (['Q1','Q2','Q3','Q4'] as const).filter(q => q !== activeQuarter).join(', ')
+                        if (!confirm(`Скопировать правила ${activeQuarter} в ${others}? Текущие правила будут заменены.`)) return
+                        setAbsoluteQThresholds(prev => {
+                          const src = prev[activeQuarter].map(r => ({ ...r }))
+                          return { Q1: activeQuarter==='Q1'?prev.Q1:src, Q2: activeQuarter==='Q2'?prev.Q2:src, Q3: activeQuarter==='Q3'?prev.Q3:src, Q4: activeQuarter==='Q4'?prev.Q4:src }
+                        })
+                      }}
+                      style={{ background: 'rgba(255,149,0,0.08)', border: '1px solid rgba(255,149,0,0.3)', borderRadius: 6, color: '#ff9500', cursor: 'pointer', fontSize: 11, padding: '4px 10px', fontFamily: 'Exo 2, sans-serif' }}
+                    >
+                      Скопировать {activeQuarter} во все →
+                    </button>
+                  </div>
+                  <ThresholdRulesEditor
+                    rules={absoluteQThresholds[activeQuarter]}
+                    onChange={newRules => setAbsoluteQThresholds(prev => ({ ...prev, [activeQuarter]: newRules }))}
+                    showPercent={false}
+                  />
+                  {errors.absoluteRules && <div style={ERROR_STYLE}>{errors.absoluteRules}</div>}
+                </div>
+              )}
             </>
           )}
         </div>

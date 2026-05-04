@@ -8,6 +8,7 @@ KpiFormulaType = Literal[
     "threshold",
     "multi_threshold",
     "quarterly_threshold",
+    "absolute_threshold",
 ]
 
 KpiType = Literal["binary_auto", "binary_manual", "numeric"]

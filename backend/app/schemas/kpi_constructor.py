@@ -11,7 +11,7 @@ from pydantic import BaseModel
 class IndicatorCreate(BaseModel):
     code: Optional[str] = None
     name: str
-    formula_type: str                           # binary_auto | binary_manual | threshold | multi_threshold | quarterly_threshold
+    formula_type: str                           # binary_auto | binary_manual | threshold | multi_threshold | quarterly_threshold | absolute_threshold
     is_common: bool = False
     is_editable_per_role: bool = True
     indicator_group: Optional[str] = None
@@ -26,6 +26,8 @@ class IndicatorCreate(BaseModel):
     plan_value: Optional[str] = None
     common_text_positive: Optional[str] = None
     common_text_negative: Optional[str] = None
+    value_label: Optional[str] = None           # для absolute_threshold: подпись поля ввода
+    is_quarterly: bool = False                  # для absolute_threshold: квартальные пороги
 
 
 class IndicatorUpdate(BaseModel):
@@ -45,6 +47,8 @@ class IndicatorUpdate(BaseModel):
     plan_value: Optional[str] = None
     common_text_positive: Optional[str] = None
     common_text_negative: Optional[str] = None
+    value_label: Optional[str] = None
+    is_quarterly: Optional[bool] = None
 
 
 class CriterionResponse(BaseModel):
@@ -62,6 +66,8 @@ class CriterionResponse(BaseModel):
     common_text_negative: Optional[str]
     sub_type: Optional[str] = None
     order: int = 0
+    value_label: Optional[str] = None
+    is_quarterly: bool = False
     created_at: datetime
 
     class Config:

@@ -17,6 +17,7 @@ _FORMULA_TO_KPI_TYPE = {
     "threshold":           "numeric",
     "multi_threshold":     "numeric",
     "quarterly_threshold": "numeric",
+    "absolute_threshold":  "numeric",
 }
 
 

@@ -87,6 +87,17 @@ def apply_threshold(value: float, rules: list[ThresholdRule]) -> float:
     return 0.0
 
 
+def apply_absolute_threshold(value: float, rules: list[ThresholdRule]) -> float:
+    """
+    Применяет пороги к абсолютному значению (без деления на знаменатель).
+    Сравниваем value напрямую, не нормализуем к процентам.
+    """
+    for rule in rules:
+        if all(_eval_condition(value, cond) for cond in rule.conditions):
+            return rule.score
+    return 0.0
+
+
 def evaluate_threshold_kpi(
     formula_type: str,
     thresholds_str: str,
@@ -103,6 +114,10 @@ def evaluate_threshold_kpi(
 
     Возвращает score (0.0, 50.0, 100.0 и т.д.)
     """
+    if formula_type == "absolute_threshold":
+        rules = parse_thresholds(thresholds_str)
+        return apply_absolute_threshold(fact_value, rules)
+
     if formula_type == "quarterly_threshold" and quarter is not None:
         # Формат: "Q1: >=80%→100% | <80%→0% || Q2: >=85%→100% | <85%→0% || ..."
         # Или просто блоки через "||" без меток квартала

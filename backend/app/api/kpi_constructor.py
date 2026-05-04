@@ -202,6 +202,8 @@ async def create_indicator(
         plan_value=body.plan_value,
         common_text_positive=body.common_text_positive,
         common_text_negative=body.common_text_negative,
+        value_label=body.value_label,
+        is_quarterly=body.is_quarterly,
     )
     db.add(criterion)
     await db.commit()
@@ -252,6 +254,7 @@ async def update_indicator(
         "criterion", "numerator_label", "denominator_label", "thresholds",
         "sub_indicators", "quarterly_thresholds", "cumulative",
         "plan_value", "common_text_positive", "common_text_negative",
+        "value_label", "is_quarterly",
     }
     has_crit_update = any(getattr(body, f) is not None for f in crit_fields)
     if has_crit_update:
@@ -280,6 +283,10 @@ async def update_indicator(
                 cr.common_text_positive = body.common_text_positive
             if body.common_text_negative is not None:
                 cr.common_text_negative = body.common_text_negative
+            if body.value_label is not None:
+                cr.value_label = body.value_label
+            if body.is_quarterly is not None:
+                cr.is_quarterly = body.is_quarterly
 
     await db.commit()
     await db.refresh(ind)

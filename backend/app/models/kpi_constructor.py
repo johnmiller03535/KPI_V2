@@ -43,6 +43,8 @@ class KpiCriterion(Base):
     quarterly_thresholds = Column(JSONB, nullable=True)         # {Q1: {...}, Q2: {...}, ...}
     sub_type = Column(String, nullable=True)   # 'sub_binary' for multi_binary sub-items
     order = Column(Integer, default=0, nullable=False)
+    value_label = Column(String, nullable=True)              # для absolute_threshold: подпись поля ввода
+    is_quarterly = Column(Boolean, default=False, nullable=False)  # для absolute_threshold с квартальными порогами
     cumulative = Column(Boolean, default=False, nullable=False)
     plan_value = Column(String, nullable=True)
     common_text_positive = Column(Text, nullable=True)
