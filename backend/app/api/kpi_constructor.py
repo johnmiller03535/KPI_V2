@@ -449,8 +449,9 @@ async def add_indicator_to_card(
 ):
     """Добавить показатель в карточку с валидацией суммы весов ≤ 100."""
     card = await _get_card_or_404(db, card_id)
-    if card.status not in ("draft",):
-        raise HTTPException(status_code=400, detail="Карточка должна быть в статусе draft")
+    # TODO: АУДИТ 2026-05-04 — проверка статуса карточки временно отключена (карточки active)
+    # if card.status not in ("draft",):
+    #     raise HTTPException(status_code=400, detail="Карточка должна быть в статусе draft")
 
     # Проверить что показатель существует
     await _get_indicator_or_404(db, body.indicator_id)
@@ -523,8 +524,9 @@ async def update_card_indicator(
 ):
     """Изменить вес / порядок / override показателя в карточке."""
     card = await _get_card_or_404(db, card_id)
-    if card.status not in ("draft",):
-        raise HTTPException(status_code=400, detail="Карточка должна быть в статусе draft")
+    # TODO: АУДИТ 2026-05-04 — проверка статуса карточки временно отключена (карточки active)
+    # if card.status not in ("draft",):
+    #     raise HTTPException(status_code=400, detail="Карточка должна быть в статусе draft")
 
     ci_res = await db.execute(
         select(KpiRoleCardIndicator).where(
@@ -573,8 +575,9 @@ async def remove_indicator_from_card(
 ):
     """Удалить показатель из карточки."""
     card = await _get_card_or_404(db, card_id)
-    if card.status not in ("draft",):
-        raise HTTPException(status_code=400, detail="Карточка должна быть в статусе draft")
+    # TODO: АУДИТ 2026-05-04 — проверка статуса карточки временно отключена (карточки active)
+    # if card.status not in ("draft",):
+    #     raise HTTPException(status_code=400, detail="Карточка должна быть в статусе draft")
 
     await db.execute(
         delete(KpiRoleCardIndicator).where(
