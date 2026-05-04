@@ -16,6 +16,7 @@ class IndicatorCreate(BaseModel):
     is_editable_per_role: bool = True
     indicator_group: Optional[str] = None
     unit_name: Optional[str] = None              # Управление-владелец показателя
+    default_weight: Optional[int] = None         # Дефолтный вес для is_common показателей
     # Критерий (создаётся вместе с показателем)
     criterion: str
     numerator_label: Optional[str] = None
@@ -41,6 +42,7 @@ class IndicatorUpdate(BaseModel):
     is_common: Optional[bool] = None            # только hr, admin
     indicator_group: Optional[str] = None
     unit_name: Optional[str] = None
+    default_weight: Optional[int] = None
     # Обновление критерия
     criterion: Optional[str] = None
     numerator_label: Optional[str] = None
@@ -90,6 +92,7 @@ class IndicatorResponse(BaseModel):
     is_editable_per_role: bool
     indicator_group: Optional[str] = None
     unit_name: Optional[str] = None
+    default_weight: Optional[int] = None
     status: str
     version: int
     valid_from: Optional[date]

@@ -184,6 +184,7 @@ async def create_indicator(
         is_editable_per_role=body.is_editable_per_role,
         indicator_group=body.indicator_group,
         unit_name=body.unit_name,
+        default_weight=body.default_weight,
         status="draft",
         version=1,
         created_by=current_user.login,
@@ -256,6 +257,8 @@ async def update_indicator(
         ind.indicator_group = body.indicator_group
     if body.unit_name is not None:
         ind.unit_name = body.unit_name
+    if body.default_weight is not None:
+        ind.default_weight = body.default_weight
 
     # Обновить первый критерий если переданы поля
     crit_fields = {

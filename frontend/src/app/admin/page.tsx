@@ -1176,16 +1176,23 @@ function KpiTab() {
   const [wizardData, setWizardData] = useState({ role_name: '', pos_id: '', unit: '', copy_mode: 'empty', copy_from_card_id: '' })
   const [wizardSaving, setWizardSaving] = useState(false)
   const [wizardPrefilledPos, setWizardPrefilledPos] = useState<any>(null)
+  const [wizardCreatedMsg, setWizardCreatedMsg] = useState('')
+  // Wizard step 1: иерархический выбор должности
+  const [allSubEntries, setAllSubEntries] = useState<any[]>([])
+  const [wizardUnit, setWizardUnit] = useState('')
+  const [wizardPosition, setWizardPosition] = useState<any>(null)
 
   async function loadCards() {
-    const [cds, inds, missing] = await Promise.all([
+    const [cds, inds, missing, subData] = await Promise.all([
       api.get('/kpi/cards?status=active').then(r => r.data),
       api.get('/kpi/indicators?status=active').then(r => r.data),
       api.get('/admin/kpi-cards/positions-without-cards').then(r => r.data).catch(() => []),
+      api.get('/admin/subordination').then(r => r.data).catch(() => []),
     ])
     setCards(Array.isArray(cds) ? cds : (cds.items ?? []))
     setAllIndicators(Array.isArray(inds) ? inds : (inds.items ?? []))
     setPositionsWithoutCards(Array.isArray(missing) ? missing : [])
+    setAllSubEntries(Array.isArray(subData) ? subData : [])
   }
 
   useEffect(() => {
@@ -1319,28 +1326,25 @@ function KpiTab() {
 
   function openCreateWizard(prefilledPos?: any) {
     setWizardPrefilledPos(prefilledPos || null)
-    setWizardData({
-      role_name: prefilledPos?.role || '',
-      pos_id: prefilledPos?.pos_id ? String(prefilledPos.pos_id) : '',
-      unit: prefilledPos?.unit || '',
-      copy_mode: 'empty',
-      copy_from_card_id: '',
-    })
+    setWizardData({ role_name: '', pos_id: '', unit: '', copy_mode: 'empty', copy_from_card_id: '' })
+    setWizardUnit(prefilledPos?.unit ? normalizeUnit(prefilledPos.unit) : '')
+    setWizardPosition(prefilledPos || null)
     setWizardStep(1)
+    setWizardCreatedMsg('')
     setShowWizard(true)
   }
 
   async function handleWizardSave() {
-    if (!wizardData.role_name || !wizardData.pos_id) return
+    const pos = wizardPosition || wizardPrefilledPos
+    if (!pos) return
     setWizardSaving(true)
     try {
-      const posIdNum = parseInt(wizardData.pos_id)
-      const roleId = wizardPrefilledPos?.role_id || `POS_${wizardData.pos_id}`
+      const posIdNum = parseInt(String(pos.pos_id))
       const payload: any = {
         pos_id: posIdNum,
-        role_id: roleId,
-        role_name: wizardData.role_name,
-        unit: wizardData.unit || undefined,
+        role_id: pos.role_id || `POS_${posIdNum}`,
+        role_name: pos.role || pos.role_name,
+        unit: pos.unit || undefined,
       }
       if (wizardData.copy_mode === 'copy' && wizardData.copy_from_card_id) {
         payload.copy_from_card_id = wizardData.copy_from_card_id
@@ -1348,8 +1352,9 @@ function KpiTab() {
       await api.post('/admin/kpi-cards/', payload)
       await loadCards()
       setShowWizard(false)
-      setSelectedPosId(wizardData.pos_id)
+      setSelectedPosId(String(posIdNum))
       setSelectedUnit('all')
+      setWizardCreatedMsg(wizardData.copy_mode === 'copy' ? '' : 'Карточка создана. Автоматически добавлены общие показатели (50%). Добавьте специфические показатели.')
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка создания карточки')
     } finally { setWizardSaving(false) }
@@ -1471,11 +1476,17 @@ function KpiTab() {
           {!cardLoading && card && (
             <div>
               <button
-                onClick={() => { setCard(null); setSelectedPosId(''); setEditMode(false) }}
+                onClick={() => { setCard(null); setSelectedPosId(''); setEditMode(false); setWizardCreatedMsg('') }}
                 style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, fontFamily: 'Exo 2, sans-serif', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 ← Назад к списку
               </button>
+              {wizardCreatedMsg && (
+                <div style={{ marginBottom: 12, padding: '10px 16px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.3)', borderRadius: 8, fontSize: 13, fontFamily: 'Exo 2, sans-serif', color: 'var(--accent3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>✅ {wizardCreatedMsg}</span>
+                  <button onClick={() => setWizardCreatedMsg('')} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                </div>
+              )}
               <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
@@ -1778,48 +1789,93 @@ function KpiTab() {
           </div>
 
           <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {wizardStep === 1 && (
-              <>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>НАЗВАНИЕ ДОЛЖНОСТИ *</label>
-                  <textarea
-                    rows={2}
-                    value={wizardData.role_name}
-                    onChange={e => setWizardData(d => ({ ...d, role_name: e.target.value }))}
-                    style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
-                  />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {wizardStep === 1 && (() => {
+              // Строим иерархию из allSubEntries
+              const unitGroups: Record<string, any[]> = {}
+              for (const e of allSubEntries) {
+                const u = normalizeUnit(e.unit || 'Прочие')
+                if (!unitGroups[u]) unitGroups[u] = []
+                unitGroups[u].push(e)
+              }
+              const unitKeys = Object.keys(unitGroups).sort((a, b) => {
+                if (a === 'Руководство') return -1
+                if (b === 'Руководство') return 1
+                return a.localeCompare(b, 'ru')
+              })
+              const positionsInUnit = wizardUnit ? (unitGroups[wizardUnit] || []) : []
+              // Проверяем есть ли уже карточка у выбранной должности
+              const existingCard = wizardPosition
+                ? cards.find((c: any) => String(c.pos_id) === String(wizardPosition.pos_id))
+                : null
+              const SL: React.CSSProperties = { width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, cursor: 'pointer', boxSizing: 'border-box' as const, outline: 'none' }
+              return (
+                <>
                   <div>
-                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>POS_ID *</label>
-                    <input
-                      type="number"
-                      value={wizardData.pos_id}
-                      onChange={e => setWizardData(d => ({ ...d, pos_id: e.target.value }))}
-                      style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 14, padding: '8px 12px', outline: 'none', boxSizing: 'border-box' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОДРАЗДЕЛЕНИЕ</label>
-                    <select
-                      value={wizardData.unit}
-                      onChange={e => setWizardData(d => ({ ...d, unit: e.target.value }))}
-                      style={{ width: '100%', background: 'rgba(0,229,255,0.07)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, cursor: 'pointer', boxSizing: 'border-box' }}
-                    >
-                      <option value="">— не указано —</option>
-                      {Object.keys(cardsByUnit).sort().map(u => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
+                    <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>УПРАВЛЕНИЕ *</label>
+                    <select value={wizardUnit} onChange={e => { setWizardUnit(e.target.value); setWizardPosition(null) }} style={SL}>
+                      <option value="">— Выберите управление —</option>
+                      {unitKeys.map(u => <option key={u} value={u}>{u} ({unitGroups[u].length})</option>)}
                     </select>
                   </div>
-                </div>
-              </>
-            )}
+
+                  {wizardUnit && (
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ДОЛЖНОСТЬ *</label>
+                      <select
+                        value={wizardPosition ? String(wizardPosition.pos_id) : ''}
+                        onChange={e => {
+                          const entry = positionsInUnit.find((p: any) => String(p.pos_id) === e.target.value)
+                          setWizardPosition(entry || null)
+                        }}
+                        style={SL}
+                      >
+                        <option value="">— Выберите должность —</option>
+                        {positionsInUnit.map((p: any) => {
+                          const hasCard = cards.some((c: any) => String(c.pos_id) === String(p.pos_id))
+                          return <option key={p.pos_id} value={String(p.pos_id)}>{p.role || p.role_name}{hasCard ? ' ✓' : ''}</option>
+                        })}
+                      </select>
+                      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+                        Должности со значком ✓ уже имеют карточку
+                      </div>
+                    </div>
+                  )}
+
+                  {wizardPosition && (
+                    <div style={{
+                      padding: '12px 16px', borderRadius: 8,
+                      background: existingCard ? 'rgba(255,184,0,0.06)' : 'rgba(0,255,157,0.06)',
+                      border: `1px solid ${existingCard ? 'rgba(255,184,0,0.3)' : 'rgba(0,255,157,0.3)'}`,
+                    }}>
+                      <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+                        {wizardPosition.role || wizardPosition.role_name}
+                      </div>
+                      <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>
+                        {wizardPosition.role_id} · {wizardPosition.unit}
+                      </div>
+                      {existingCard
+                        ? <div style={{ color: 'var(--warn)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            ⚠️ Карточка уже существует
+                            <button
+                              onClick={() => { setShowWizard(false); setSelectedPosId(String(wizardPosition.pos_id)) }}
+                              style={{ fontSize: 11, padding: '2px 8px', background: 'rgba(255,184,0,0.15)', border: '1px solid rgba(255,184,0,0.4)', borderRadius: 4, color: 'var(--warn)', cursor: 'pointer' }}
+                            >Открыть</button>
+                          </div>
+                        : <div style={{ color: 'var(--accent3)', fontSize: 12 }}>✓ Карточка ещё не создана</div>
+                      }
+                    </div>
+                  )}
+                </>
+              )
+            })()}
 
             {wizardStep === 2 && (
               <>
-                <div style={{ fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 8 }}>
-                  Карточка для: <strong style={{ color: 'var(--text)' }}>{wizardData.role_name}</strong> (pos_id={wizardData.pos_id})
+                <div style={{ padding: '10px 14px', background: 'rgba(0,229,255,0.04)', borderRadius: 8, border: '1px solid rgba(0,229,255,0.15)', fontSize: 13, fontFamily: 'Exo 2, sans-serif', marginBottom: 4 }}>
+                  <div style={{ fontWeight: 600 }}>{wizardPosition?.role || wizardPosition?.role_name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Orbitron, monospace' }}>
+                    {wizardPosition?.role_id} · {wizardPosition?.unit}
+                  </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 8, border: `1px solid ${wizardData.copy_mode === 'empty' ? 'rgba(0,229,255,0.4)' : 'rgba(255,255,255,0.1)'}`, background: wizardData.copy_mode === 'empty' ? 'rgba(0,229,255,0.06)' : 'transparent', cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
@@ -1855,7 +1911,7 @@ function KpiTab() {
                   className="action-btn btn-fill"
                   style={{ fontSize: 13 }}
                   onClick={() => setWizardStep(2)}
-                  disabled={!wizardData.role_name || !wizardData.pos_id}
+                  disabled={!wizardPosition || !!cards.find((c: any) => String(c.pos_id) === String(wizardPosition?.pos_id))}
                 >
                   Далее →
                 </button>

@@ -536,6 +536,24 @@ async def create_kpi_card(
                 order_num=src_ci.order_num,
             )
             db.add(new_ci)
+    else:
+        # Новая пустая карточка — автоматически добавить is_common показатели
+        from app.models.kpi_constructor import KpiIndicator
+        common_res = await db.execute(
+            select(KpiIndicator).where(
+                KpiIndicator.is_common == True,
+                KpiIndicator.status == "active",
+            ).order_by(KpiIndicator.created_at)
+        )
+        for idx, common_ind in enumerate(common_res.scalars().all()):
+            weight = common_ind.default_weight or 10
+            db.add(KpiRoleCardIndicator(
+                id=_uuid.uuid4(),
+                card_id=card.id,
+                indicator_id=common_ind.id,
+                weight=weight,
+                order_num=idx,
+            ))
 
     await db.commit()
     return {"id": str(card.id), "pos_id": card.pos_id, "role_name": card.role_name, "status": card.status}
