@@ -231,10 +231,11 @@ async def update_indicator(
 ):
     """Редактировать показатель. Структурные поля (name, is_common) — только draft. is_common — только admin."""
     ind = await _get_indicator_or_404(db, indicator_id)
-    # Разрешаем редактирование indicator_group и критериев для active-показателей
-    struct_only = body.code is not None or body.name is not None or body.is_editable_per_role is not None or body.is_common is not None
-    if struct_only and ind.status != "draft":
-        raise HTTPException(status_code=400, detail="Структурные поля можно менять только у черновика")
+    # TODO: АУДИТ 2026-05-04 — проверка временно отключена для полного редактирования
+    # Вернуть после завершения аудита показателей:
+    # struct_only = body.code is not None or body.name is not None or body.is_editable_per_role is not None or body.is_common is not None
+    # if struct_only and ind.status != "draft":
+    #     raise HTTPException(status_code=400, detail="Структурные поля можно менять только у черновика")
 
     if body.is_common is not None and current_user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Изменять is_common может только admin")
