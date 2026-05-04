@@ -559,6 +559,59 @@ async def create_kpi_card(
     return {"id": str(card.id), "pos_id": card.pos_id, "role_name": card.role_name, "status": card.status}
 
 
+@router.post("/kpi-cards/{pos_id}/sync-common")
+async def sync_common_indicators(
+    pos_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(UserRole.admin)),
+):
+    """Добавляет все is_common active показатели в карточку если их ещё нет."""
+    from app.models.kpi_constructor import KpiRoleCard, KpiRoleCardIndicator, KpiIndicator
+    import uuid as _uuid
+
+    card_res = await db.execute(
+        select(KpiRoleCard).where(KpiRoleCard.pos_id == pos_id, KpiRoleCard.status == "active")
+    )
+    card = card_res.scalars().first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+
+    # Уже добавленные indicator_id
+    existing_res = await db.execute(
+        select(KpiRoleCardIndicator.indicator_id).where(KpiRoleCardIndicator.card_id == card.id)
+    )
+    existing_ids = {str(r) for r in existing_res.scalars().all()}
+
+    common_res = await db.execute(
+        select(KpiIndicator).where(
+            KpiIndicator.is_common == True,
+            KpiIndicator.status == "active",
+        ).order_by(KpiIndicator.created_at)
+    )
+
+    # Текущий max order_num
+    max_order_res = await db.execute(
+        select(KpiRoleCardIndicator.order_num).where(KpiRoleCardIndicator.card_id == card.id).order_by(KpiRoleCardIndicator.order_num.desc()).limit(1)
+    )
+    max_order = (max_order_res.scalars().first() or -1) + 1
+
+    added = 0
+    for ind in common_res.scalars().all():
+        if str(ind.id) not in existing_ids:
+            db.add(KpiRoleCardIndicator(
+                id=_uuid.uuid4(),
+                card_id=card.id,
+                indicator_id=ind.id,
+                weight=ind.default_weight or 10,
+                order_num=max_order,
+            ))
+            max_order += 1
+            added += 1
+
+    await db.commit()
+    return {"added": added, "message": f"Добавлено {added} общих показателей"}
+
+
 @router.patch("/subordination/{role_id}")
 async def update_subordination(
     role_id: str,

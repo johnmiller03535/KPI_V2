@@ -185,7 +185,7 @@ async def create_indicator(
         indicator_group=body.indicator_group,
         unit_name=body.unit_name,
         default_weight=body.default_weight,
-        status="draft",
+        status="active",   # TODO: АУДИТ 2026-05-04 — workflow draft→review→active реализуем позже
         version=1,
         created_by=current_user.login,
     )

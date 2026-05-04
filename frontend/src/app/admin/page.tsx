@@ -1170,6 +1170,8 @@ function KpiTab() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [viewIndId, setViewIndId] = useState<string | null>(null)
   const [addGroupFilter, setAddGroupFilter] = useState('')
+  const [addUnitFilter, setAddUnitFilter] = useState('')
+  const [syncingCommon, setSyncingCommon] = useState(false)
   // Wizard
   const [showWizard, setShowWizard] = useState(false)
   const [wizardStep, setWizardStep] = useState(1)
@@ -1287,6 +1289,8 @@ function KpiTab() {
       setAddSelected(null)
       setAddWeight('')
       setAddSearch('')
+      setAddGroupFilter('')
+      setAddUnitFilter('')
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка добавления')
     } finally { setAddingSaving(false) }
@@ -1319,8 +1323,12 @@ function KpiTab() {
   const addFiltered = allIndicators.filter(ind => {
     if (addSearch && !ind.name.toLowerCase().includes(addSearch.toLowerCase())) return false
     if (addGroupFilter && (ind.indicator_group || 'Прочие показатели') !== addGroupFilter) return false
+    if (addUnitFilter && (ind.unit_name || '') !== addUnitFilter) return false
     return true
   })
+
+  // Уникальные unit_name из активных показателей
+  const addUnitOptions = [...new Set(allIndicators.map((i: any) => i.unit_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'))
 
   const totalWeight = card?.total_weight ?? (card?.indicators || []).reduce((s: number, ci: any) => s + (ci.weight || 0), 0)
 
@@ -1358,6 +1366,25 @@ function KpiTab() {
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка создания карточки')
     } finally { setWizardSaving(false) }
+  }
+
+  async function handleSyncCommon() {
+    if (!card) return
+    setSyncingCommon(true)
+    try {
+      const r = await api.post(`/admin/kpi-cards/${card.pos_id}/sync-common`)
+      if (r.data.added > 0) {
+        setWizardCreatedMsg(`Добавлено ${r.data.added} общих показателей`)
+        // Перезагружаем карточку
+        const updated = await api.get(`/kpi/cards/${card.pos_id}/active`)
+        setCard(updated.data)
+        setEditedIndicators([...(updated.data.indicators || [])])
+      } else {
+        setWizardCreatedMsg('Все общие показатели уже присутствуют в карточке')
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Ошибка синхронизации')
+    } finally { setSyncingCommon(false) }
   }
 
   if (loading) return (
@@ -1512,9 +1539,27 @@ function KpiTab() {
                         </button>
                       </>
                     ) : (
-                      <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => setEditMode(true)}>
-                        ✏️ Редактировать
-                      </button>
+                      <>
+                        {/* Кнопка синхронизации общих показателей */}
+                        {(() => {
+                          const commonIds = allIndicators.filter((i: any) => i.is_common).map((i: any) => i.id)
+                          const cardIndIds = (card.indicators || []).map((ci: any) => ci.indicator_id)
+                          const hasMissing = commonIds.some((id: string) => !cardIndIds.includes(id))
+                          return hasMissing ? (
+                            <button
+                              className="cyber-btn"
+                              style={{ fontSize: 11, padding: '4px 10px', background: 'rgba(255,184,0,0.08)', border: '1px solid rgba(255,184,0,0.3)', color: 'var(--warn)' }}
+                              onClick={handleSyncCommon}
+                              disabled={syncingCommon}
+                            >
+                              {syncingCommon ? '...' : '+ Общие показатели'}
+                            </button>
+                          ) : null
+                        })()}
+                        <button className="action-btn btn-view" style={{ fontSize: 12 }} onClick={() => setEditMode(true)}>
+                          ✏️ Редактировать
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1631,29 +1676,37 @@ function KpiTab() {
     {showAddModal && (
       <div
         style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-        onClick={e => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight(''); setAddGroupFilter('') } }}
+        onClick={e => { if (e.target === e.currentTarget) { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight(''); setAddGroupFilter(''); setAddUnitFilter('') } }}
       >
         <div className="cyber-card" style={{ maxWidth: 600, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 0, padding: 0 }}
           onClick={e => e.stopPropagation()}
         >
           <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>ДОБАВИТЬ ПОКАЗАТЕЛЬ</div>
-            <button onClick={() => { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight(''); setAddGroupFilter('') }}
+            <button onClick={() => { setShowAddModal(false); setAddSelected(null); setAddSearch(''); setAddWeight(''); setAddGroupFilter(''); setAddUnitFilter('') }}
               style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
           </div>
           <div style={{ padding: '16px 20px', flex: 1, display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+            <input
+              type="text"
+              placeholder="Поиск по названию..."
+              value={addSearch}
+              onChange={e => setAddSearch(e.target.value)}
+              style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none' }}
+            />
             <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                type="text"
-                placeholder="Поиск по названию..."
-                value={addSearch}
-                onChange={e => setAddSearch(e.target.value)}
-                style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none' }}
-              />
+              <select
+                value={addUnitFilter}
+                onChange={e => setAddUnitFilter(e.target.value)}
+                style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '7px 10px', fontFamily: 'Exo 2, sans-serif', fontSize: 12, outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="">Все управления</option>
+                {addUnitOptions.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
               <select
                 value={addGroupFilter}
                 onChange={e => setAddGroupFilter(e.target.value)}
-                style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '8px 12px', fontFamily: 'Exo 2, sans-serif', fontSize: 13, outline: 'none', cursor: 'pointer', minWidth: 160 }}
+                style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 8, color: 'var(--text)', padding: '7px 10px', fontFamily: 'Exo 2, sans-serif', fontSize: 12, outline: 'none', cursor: 'pointer' }}
               >
                 <option value="">Все группы</option>
                 {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all').map(g => (
