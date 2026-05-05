@@ -2670,7 +2670,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           )}
 
           {/* МЕТОДИКА РАСЧЁТА */}
-          {['binary_manual', 'multi_binary', 'threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(formulaType) && (
+          {['binary_auto', 'binary_manual', 'multi_binary', 'threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(formulaType) && (
             <div>
               <label style={LABEL_STYLE}>МЕТОДИКА РАСЧЁТА</label>
               <textarea
