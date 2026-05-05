@@ -69,6 +69,8 @@ async def _build_indicator_response(db: AsyncSession, ind: KpiIndicator) -> Indi
         is_common=ind.is_common,
         is_editable_per_role=ind.is_editable_per_role,
         indicator_group=ind.indicator_group,
+        unit_name=ind.unit_name,
+        default_weight=ind.default_weight,
         status=ind.status,
         version=ind.version,
         valid_from=ind.valid_from,

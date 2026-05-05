@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { normalizeUnit, buildDeptMap, sortedDeptKeys } from '@/utils/admin'
@@ -1276,7 +1276,10 @@ function KpiTab() {
     if (!card || !addSelected || !addWeight) return
     setAddingSaving(true)
     try {
-      const nextOrder = Math.max(...editedIndicators.map(ci => ci.order_num ?? 0), 0) + 1
+      const specificInds = editedIndicators.filter((ci: any) => !ci.is_common)
+      const nextOrder = specificInds.length > 0
+        ? Math.max(...specificInds.map((ci: any) => ci.order_num ?? 0)) + 1
+        : 1
       await api.post(`/kpi/cards/${card.id}/indicators`, {
         indicator_id: addSelected.id,
         weight: parseInt(addWeight),
@@ -1571,16 +1574,34 @@ function KpiTab() {
                       <th style={TH}>Тип</th>
                       <th style={TH}>Общий</th>
                       <th style={{ ...TH, textAlign: 'right' }}>Вес</th>
+                      <th style={{ ...TH, width: 80 }}>Детали</th>
                       {editMode && <th style={{ ...TH, width: 40 }}></th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {(editMode ? editedIndicators : (card.indicators || [])).map((ci: any, idx: number) => (
-                      <tr key={ci.indicator_id ?? idx}
-                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
+                    {(() => {
+                      const source = editMode ? editedIndicators : (card.indicators || [])
+                      const sorted = [...source].sort((a: any, b: any) => {
+                        if (a.is_common !== b.is_common) return a.is_common ? 1 : -1
+                        return (a.order_num ?? 0) - (b.order_num ?? 0)
+                      })
+                      return sorted.map((ci: any, idx: number) => {
+                        const prevCi = sorted[idx - 1]
+                        const showDivider = idx > 0 && ci.is_common && !prevCi?.is_common
+                        return (
+                          <React.Fragment key={ci.indicator_id ?? `row-${idx}`}>
+                            {showDivider && (
+                              <tr>
+                                <td colSpan={editMode ? 7 : 5} style={{ padding: '4px 20px', background: 'rgba(0,229,255,0.04)', fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Orbitron, monospace', letterSpacing: 1 }}>
+                                  ОБЩИЕ ПОКАЗАТЕЛИ
+                                </td>
+                              </tr>
+                            )}
+                            <tr
+                              style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                            >
                         {editMode && (
                           <td style={{ ...TD, width: 64 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1590,14 +1611,7 @@ function KpiTab() {
                           </td>
                         )}
                         <td style={{ ...TD, fontWeight: 600 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span>{ci.indicator_name || '—'}</span>
-                            <button
-                              onClick={() => setViewIndId(ci.indicator_id)}
-                              title="Просмотр показателя"
-                              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, lineHeight: 1, opacity: 0.7, padding: '0 2px' }}
-                            >👁</button>
-                          </div>
+                          <span>{ci.indicator_name || '—'}</span>
                         </td>
                         <td style={TD}>
                           {ci.indicator_formula_type && (
@@ -1633,6 +1647,14 @@ function KpiTab() {
                             </span>
                           )}
                         </td>
+                        <td style={{ ...TD, width: 80 }}>
+                          <button
+                            onClick={() => setViewIndId(ci.indicator_id)}
+                            style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.25)', borderRadius: 6, color: 'var(--accent)', cursor: 'pointer', fontSize: 11, padding: '3px 10px', fontFamily: 'Exo 2, sans-serif', whiteSpace: 'nowrap' }}
+                          >
+                            👁 Детали
+                          </button>
+                        </td>
                         {editMode && (
                           <td style={{ ...TD, width: 40 }}>
                             {!ci.is_common && (
@@ -1647,8 +1669,11 @@ function KpiTab() {
                             )}
                           </td>
                         )}
-                      </tr>
-                    ))}
+                            </tr>
+                          </React.Fragment>
+                        )
+                      })
+                    })()}
                   </tbody>
                 </table>
                 <div style={{ padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12 }}>
@@ -1797,10 +1822,12 @@ function KpiTab() {
               </div>
               <button onClick={() => setViewIndId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: 20, cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
-              <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</div>
-              <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, lineHeight: 1.5 }}>{cr.criterion}</div>
-            </div>
+            {vi.formula_type !== 'multi_binary' && (
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</div>
+                <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, lineHeight: 1.5 }}>{cr.criterion}</div>
+              </div>
+            )}
             {vi.formula_type === 'multi_binary' && cr.sub_indicators?.length > 0 && (
               <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
                 <div style={{ fontSize: 11, color: '#ff6b9d', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>ПОДПОКАЗАТЕЛИ</div>
