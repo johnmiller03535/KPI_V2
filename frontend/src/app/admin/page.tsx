@@ -1520,16 +1520,13 @@ function KpiTab() {
                   <button onClick={() => setWizardCreatedMsg('')} style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 14 }}>✕</button>
                 </div>
               )}
-              <div className="cyber-card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--bg)', paddingBottom: 0 }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,229,255,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Sticky шапка — прямой дочерний элемент scroll-контейнера */}
+              <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--bg)', marginBottom: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', background: 'var(--card)', borderRadius: '12px 12px 0 0', border: '1px solid rgba(0,229,255,0.15)', borderBottom: 'none' }}>
                   <div>
-                    <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>
-                      {card.role_name}
-                    </span>
+                    <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 13, color: 'var(--accent)' }}>{card.role_name}</span>
                     <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--text-dim)' }}>
-                      pos_id={card.pos_id} · v{card.version} · {card.status}
-                      {card.unit && ` · ${card.unit}`}
+                      pos_id={card.pos_id} · v{card.version} · {card.status}{card.unit && ` · ${card.unit}`}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -1547,7 +1544,6 @@ function KpiTab() {
                       </>
                     ) : (
                       <>
-                        {/* Кнопка синхронизации общих показателей */}
                         {(() => {
                           const commonIds = allIndicators.filter((i: any) => i.is_common).map((i: any) => i.id)
                           const cardIndIds = (card.indicators || []).map((ci: any) => ci.indicator_id)
@@ -1570,7 +1566,8 @@ function KpiTab() {
                     )}
                   </div>
                 </div>
-                </div>{/* /sticky header */}
+              </div>
+              <div className="cyber-card" style={{ padding: 0, overflow: 'hidden', borderRadius: '0 0 12px 12px', marginTop: 0 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -1607,13 +1604,16 @@ function KpiTab() {
                               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,229,255,0.03)')}
                               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                             >
-                        {editMode && (
+                        {editMode && !ci.is_common && (
                           <td style={{ ...TD, width: 64 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               <button onClick={() => swapOrder(ci.indicator_id, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
                               <button onClick={() => swapOrder(ci.indicator_id, 1)} disabled={idx === sorted.length - 1} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === sorted.length - 1 ? 0.3 : 1 }}>▼</button>
                             </div>
                           </td>
+                        )}
+                        {editMode && ci.is_common && (
+                          <td style={{ ...TD, width: 64 }} />
                         )}
                         <td style={{ ...TD, fontWeight: 600 }}>
                           <span>{ci.indicator_name || '—'}</span>
@@ -2592,24 +2592,26 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 Общий для всех сотрудников
               </label>
             </div>
-            {isCommon && (
-              <div style={{ marginTop: 12 }}>
-                <label style={LABEL_STYLE}>ВЕС ПО УМОЛЧАНИЮ (%)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={defaultWeight}
-                  onChange={e => setDefaultWeight(parseInt(e.target.value) || 0)}
-                  placeholder="10"
-                  style={{ ...INPUT_STYLE, width: 100 }}
-                />
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
-                  Этот вес будет автоматически подставлен при добавлении показателя в карточку
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* ВЕС ПО УМОЛЧАНИЮ — отдельный блок, только для is_common */}
+          {isCommon && (
+            <div>
+              <label style={LABEL_STYLE}>ВЕС ПО УМОЛЧАНИЮ (%)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={defaultWeight === 0 ? '' : defaultWeight}
+                onChange={e => setDefaultWeight(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                placeholder="10"
+                style={{ ...INPUT_STYLE, width: 100 }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+                Автоматически подставляется при добавлении показателя в карточку
+              </div>
+            </div>
+          )}
 
           {/* УПРАВЛЕНИЕ */}
           <div>
