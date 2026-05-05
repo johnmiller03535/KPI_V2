@@ -1312,14 +1312,17 @@ function KpiTab() {
     }
   }
 
-  function swapOrder(idx: number, dir: -1 | 1) {
-    const arr = [...editedIndicators]
+  function swapOrder(indicatorId: string, dir: -1 | 1) {
+    const sorted = [...editedIndicators].sort((a: any, b: any) => {
+      if (a.is_common !== b.is_common) return a.is_common ? 1 : -1
+      return (a.order_num ?? 0) - (b.order_num ?? 0)
+    })
+    const idx = sorted.findIndex((x: any) => x.indicator_id === indicatorId)
     const swapIdx = idx + dir
-    if (swapIdx < 0 || swapIdx >= arr.length) return
-    const tmp = arr[idx].order_num
-    arr[idx] = { ...arr[idx], order_num: arr[swapIdx].order_num }
-    arr[swapIdx] = { ...arr[swapIdx], order_num: tmp }
-    const sorted = [...arr].sort((a, b) => a.order_num - b.order_num)
+    if (swapIdx < 0 || swapIdx >= sorted.length) return
+    const tmp = sorted[idx].order_num
+    sorted[idx] = { ...sorted[idx], order_num: sorted[swapIdx].order_num }
+    sorted[swapIdx] = { ...sorted[swapIdx], order_num: tmp }
     setEditedIndicators(sorted)
   }
 
@@ -1607,8 +1610,8 @@ function KpiTab() {
                         {editMode && (
                           <td style={{ ...TD, width: 64 }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <button onClick={() => swapOrder(idx, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
-                              <button onClick={() => swapOrder(idx, 1)} disabled={idx === editedIndicators.length - 1} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === editedIndicators.length - 1 ? 0.3 : 1 }}>▼</button>
+                              <button onClick={() => swapOrder(ci.indicator_id, -1)} disabled={idx === 0} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === 0 ? 0.3 : 1 }}>▲</button>
+                              <button onClick={() => swapOrder(ci.indicator_id, 1)} disabled={idx === sorted.length - 1} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 12, lineHeight: 1, opacity: idx === sorted.length - 1 ? 0.3 : 1 }}>▼</button>
                             </div>
                           </td>
                         )}
@@ -1639,7 +1642,7 @@ function KpiTab() {
                               value={ci.weight}
                               onChange={e => {
                                 const val = parseInt(e.target.value) || 0
-                                setEditedIndicators(prev => prev.map((x, i) => i === idx ? { ...x, weight: val } : x))
+                                setEditedIndicators(prev => prev.map((x: any) => x.indicator_id === ci.indicator_id ? { ...x, weight: val } : x))
                               }}
                               style={{ width: 60, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', fontSize: 14, fontWeight: 700, padding: '4px 8px', textAlign: 'right' }}
                             />
@@ -2311,6 +2314,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || '')
   const [unitName, setUnitName] = useState(initialData?.unit_name || '')
   const [isCommon, setIsCommon] = useState(initialData?.is_common || false)
+  const [defaultWeight, setDefaultWeight] = useState(initialData?.default_weight || 0)
   const [positiveText, setPositiveText] = useState(initCr.common_text_positive || '')
   const [negativeText, setNegativeText] = useState(initCr.common_text_negative || '')
   const [criterion, setCriterion] = useState(initCr.criterion || '')
@@ -2394,6 +2398,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
       indicator_group: indicatorGroup,
       unit_name: unitName || null,
       is_common: isCommon,
+      default_weight: isCommon ? defaultWeight : null,
       criterion: criterion.trim(),
       common_text_positive: positiveText.trim() || null,
       common_text_negative: negativeText.trim() || null,
@@ -2587,6 +2592,23 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 Общий для всех сотрудников
               </label>
             </div>
+            {isCommon && (
+              <div style={{ marginTop: 12 }}>
+                <label style={LABEL_STYLE}>ВЕС ПО УМОЛЧАНИЮ (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={defaultWeight}
+                  onChange={e => setDefaultWeight(parseInt(e.target.value) || 0)}
+                  placeholder="10"
+                  style={{ ...INPUT_STYLE, width: 100 }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+                  Этот вес будет автоматически подставлен при добавлении показателя в карточку
+                </div>
+              </div>
+            )}
           </div>
 
           {/* УПРАВЛЕНИЕ */}
