@@ -1132,6 +1132,7 @@ const TYPE_LABELS: Record<string, string> = {
   multi_threshold: 'Мульти-порог',
   quarterly_threshold: 'Квартальный',
   absolute_threshold: 'Абсолютный',
+  multi_mixed: 'Смешанный мульти',
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -1142,6 +1143,7 @@ const TYPE_COLORS: Record<string, string> = {
   multi_threshold: '#b4a0ff',
   quarterly_threshold: '#ff8c00',
   absolute_threshold: '#ff9500',
+  multi_mixed: '#e879f9',
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -1169,6 +1171,7 @@ function KpiTab() {
   const [addingSaving, setAddingSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [viewIndId, setViewIndId] = useState<string | null>(null)
+  const [editingIndicatorInCard, setEditingIndicatorInCard] = useState<any>(null)
   const [addGroupFilter, setAddGroupFilter] = useState('')
   const [addUnitFilter, setAddUnitFilter] = useState('')
   const [syncingCommon, setSyncingCommon] = useState(false)
@@ -1809,6 +1812,16 @@ function KpiTab() {
       <IndicatorViewModal
         indicator={allIndicators.find((i: any) => i.id === viewIndId)}
         onClose={() => setViewIndId(null)}
+        onEdit={(ind) => { setViewIndId(null); setEditingIndicatorInCard(ind) }}
+      />
+    )}
+
+    {/* ── РЕДАКТИРОВАНИЕ ПОКАЗАТЕЛЯ ИЗ КАРТОЧКИ ── */}
+    {editingIndicatorInCard && (
+      <IndicatorFormModal
+        initialData={editingIndicatorInCard}
+        onClose={() => setEditingIndicatorInCard(null)}
+        onSuccess={() => { loadCards(); setEditingIndicatorInCard(null) }}
       />
     )}
 
@@ -2014,6 +2027,7 @@ const TYPE_DESCRIPTIONS: Record<string, string> = {
   multi_threshold: 'Несколько числовых подпоказателей — нужно выполнить все',
   quarterly_threshold: 'Числовой с разными порогами для каждого квартала',
   absolute_threshold: 'Сотрудник вводит одно число. Система сравнивает его с порогами напрямую (без деления)',
+  multi_mixed: 'Подпоказатели смешанного типа: числовые (threshold) оценивает сотрудник, ручные (binary_manual) — руководитель. Все должны быть выполнены → 100%, хотя бы один нет → 0%.',
 }
 
 // ─── SHARED STYLES ────────────────────────────────────────────────────────────
@@ -2147,8 +2161,8 @@ function IndicatorViewModal({ indicator: vi, onClose, onEdit }: {
 
           return (
             <div key={i}>
-              {/* КРИТЕРИЙ ОЦЕНКИ — скрываем для multi_binary */}
-              {vi.formula_type !== 'multi_binary' && (
+              {/* КРИТЕРИЙ ОЦЕНКИ — скрываем для multi_binary и multi_mixed */}
+              {!['multi_binary', 'multi_mixed'].includes(vi.formula_type) && (
                 <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
                   <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'Orbitron, monospace', marginBottom: 8, letterSpacing: 1 }}>КРИТЕРИЙ ОЦЕНКИ</div>
                   <div style={{ fontFamily: 'Exo 2, sans-serif', fontSize: 14, lineHeight: 1.5, color: 'var(--text)' }}>{cr.criterion}</div>
@@ -2175,16 +2189,14 @@ function IndicatorViewModal({ indicator: vi, onClose, onEdit }: {
                 </div>
               )}
 
-              {/* ПОДПОКАЗАТЕЛИ — multi_binary и multi_threshold */}
-              {['multi_binary', 'multi_threshold'].includes(vi.formula_type) && cr.sub_indicators?.length > 0 && (
+              {/* ПОДПОКАЗАТЕЛИ — multi_binary */}
+              {vi.formula_type === 'multi_binary' && cr.sub_indicators?.length > 0 && (
                 <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
                   <div style={{ fontSize: 11, color: '#ff6b9d', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОДПОКАЗАТЕЛИ</div>
-                  {vi.formula_type === 'multi_binary' && (
-                    <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 10 }}>
-                      Руководитель оценивает каждый отдельно. Все должны быть ✅
-                    </div>
-                  )}
-                  {cr.formula_desc && vi.formula_type === 'multi_binary' && (
+                  <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 10 }}>
+                    Руководитель оценивает каждый отдельно. Все должны быть ✅
+                  </div>
+                  {cr.formula_desc && (
                     <div style={{ marginBottom: 10, padding: '8px 12px', background: 'rgba(0,229,255,0.03)', borderLeft: '2px solid rgba(0,229,255,0.3)', borderRadius: '0 4px 4px 0', fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic', lineHeight: 1.5 }}>
                       💡 {cr.formula_desc}
                     </div>
@@ -2193,16 +2205,82 @@ function IndicatorViewModal({ indicator: vi, onClose, onEdit }: {
                     .slice()
                     .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
                     .map((sub: any, si: number) => (
-                      <div key={si} style={{ marginBottom: 8, fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                      <div key={si} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.04)', fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                           <span style={{ color: '#ff6b9d', fontFamily: 'Orbitron, monospace', fontSize: 11, minWidth: 20, marginTop: 2 }}>{si + 1}.</span>
-                          <span style={{ color: 'var(--text)' }}>{sub.description}</span>
+                          <span style={{ color: 'var(--text)', fontWeight: 600 }}>{sub.description}</span>
                         </div>
                         {sub.sub_criterion && (
-                          <div style={{ paddingLeft: 30, marginTop: 3, color: 'var(--text-dim)', fontSize: 12, fontStyle: 'italic' }}>
-                            ↳ {sub.sub_criterion}
-                          </div>
+                          <div style={{ paddingLeft: 30, marginTop: 3, color: 'var(--text-dim)', fontSize: 12, fontStyle: 'italic' }}>↳ {sub.sub_criterion}</div>
                         )}
+                        {sub.formula_desc && (
+                          <div style={{ paddingLeft: 30, marginTop: 3, color: 'var(--text-dim)', fontSize: 12 }}>💡 {sub.formula_desc}</div>
+                        )}
+                        {sub.positive_text && (
+                          <div style={{ paddingLeft: 30, marginTop: 3, color: 'var(--accent3)', fontSize: 12 }}>✅ {sub.positive_text}</div>
+                        )}
+                        {sub.negative_text && (
+                          <div style={{ paddingLeft: 30, marginTop: 3, color: 'var(--danger)', fontSize: 12 }}>❌ {sub.negative_text}</div>
+                        )}
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              {/* ПОДПОКАЗАТЕЛИ — multi_threshold */}
+              {vi.formula_type === 'multi_threshold' && cr.sub_indicators?.length > 0 && (
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                  <div style={{ fontSize: 11, color: '#b4a0ff', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОДПОКАЗАТЕЛИ</div>
+                  {cr.sub_indicators
+                    .slice()
+                    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((sub: any, si: number) => (
+                      <div key={si} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.04)', fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                        <div style={{ fontWeight: 600, color: '#b4a0ff', marginBottom: 4 }}>{si + 1}. {sub.name}</div>
+                        {sub.formula_desc && <div style={{ color: 'var(--text-dim)', fontSize: 12, marginBottom: 4 }}>💡 {sub.formula_desc}</div>}
+                        {sub.numerator_label && sub.denominator_label && (
+                          <div style={{ color: 'var(--text-dim)', fontSize: 12, marginBottom: 4 }}>{sub.numerator_label} / {sub.denominator_label}</div>
+                        )}
+                        {(sub.thresholds || sub.rules)?.map((r: any, ri: number) => {
+                          let op = '', val = ''
+                          if (r.condition) { const m = String(r.condition).match(/^(>=|<=|>|<|==?)(.+)$/); op = m?.[1] ?? ''; val = m?.[2] ?? r.condition }
+                          else { op = r.operator ?? ''; val = String(r.value ?? '') }
+                          return <div key={ri} style={{ fontFamily: 'Orbitron, monospace', fontSize: 11, color: 'var(--accent3)', marginBottom: 2 }}>{op} {val}% → {r.score} баллов</div>
+                        })}
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              {/* ПОДПОКАЗАТЕЛИ — multi_mixed */}
+              {vi.formula_type === 'multi_mixed' && cr.sub_indicators?.length > 0 && (
+                <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(0,229,255,0.1)' }}>
+                  <div style={{ fontSize: 11, color: '#e879f9', fontFamily: 'Orbitron, monospace', marginBottom: 6, letterSpacing: 1 }}>ПОДПОКАЗАТЕЛИ</div>
+                  {cr.sub_indicators
+                    .slice()
+                    .sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0))
+                    .map((sub: any, si: number) => (
+                      <div key={si} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.04)', fontFamily: 'Exo 2, sans-serif', fontSize: 13 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ fontWeight: 600, color: '#e879f9' }}>{si + 1}. {sub.name}</span>
+                          <span style={{ fontSize: 10, color: sub.sub_type === 'threshold' ? 'var(--accent3)' : 'var(--warn)', fontFamily: 'Orbitron, monospace' }}>
+                            {sub.sub_type === 'threshold' ? '📊 числовой' : '👤 ручной'}
+                          </span>
+                        </div>
+                        {sub.formula_desc && <div style={{ color: 'var(--text-dim)', fontSize: 12, marginBottom: 4 }}>💡 {sub.formula_desc}</div>}
+                        {sub.sub_type !== 'binary_manual' && sub.numerator_label && (
+                          <div style={{ color: 'var(--text-dim)', fontSize: 12, marginBottom: 4 }}>{sub.numerator_label} / {sub.denominator_label}</div>
+                        )}
+                        {sub.sub_type !== 'binary_manual' && (sub.rules || sub.thresholds)?.map((r: any, ri: number) => {
+                          let op = '', val = ''
+                          if (r.condition) { const m = String(r.condition).match(/^(>=|<=|>|<|==?)(.+)$/); op = m?.[1] ?? ''; val = m?.[2] ?? r.condition }
+                          else { op = r.operator ?? ''; val = String(r.value ?? '') }
+                          return <div key={ri} style={{ fontFamily: 'Orbitron, monospace', fontSize: 11, color: 'var(--accent3)', marginBottom: 2 }}>{op} {val}% → {r.score} баллов</div>
+                        })}
+                        {sub.sub_type === 'binary_manual' && sub.positive_text && <div style={{ color: 'var(--accent3)', fontSize: 12 }}>✅ {sub.positive_text}</div>}
+                        {sub.sub_type === 'binary_manual' && sub.negative_text && <div style={{ color: 'var(--danger)', fontSize: 12 }}>❌ {sub.negative_text}</div>}
                       </div>
                     ))
                   }
@@ -2275,8 +2353,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   // Parse initialData into form state
   const initCr = initialData?.criteria?.[0] || {}
   const initSubBinary = initialData?.formula_type === 'multi_binary' && initCr.sub_indicators
-    ? initCr.sub_indicators.map((s: any, i: number) => ({ description: s.description || '', order: s.order ?? i, sub_criterion: s.sub_criterion || '' }))
-    : [{ description: '', order: 0, sub_criterion: '' }, { description: '', order: 1, sub_criterion: '' }]
+    ? initCr.sub_indicators.map((s: any, i: number) => ({ description: s.description || '', order: s.order ?? i, sub_criterion: s.sub_criterion || '', formula_desc: s.formula_desc || '', positive_text: s.positive_text || '', negative_text: s.negative_text || '' }))
+    : [{ description: '', order: 0, sub_criterion: '', formula_desc: '', positive_text: '', negative_text: '' }, { description: '', order: 1, sub_criterion: '', formula_desc: '', positive_text: '', negative_text: '' }]
 
   function parseThresholds(t: any[]): ThresholdRule[] {
     if (!t || !t.length) return [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }]
@@ -2290,14 +2368,15 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const initSubThresholds = initialData?.formula_type === 'multi_threshold' && initCr.sub_indicators
     ? initCr.sub_indicators.map((s: any) => ({
         name: s.name || '',
+        formula_desc: s.formula_desc || '',
         numerator_label: s.numerator_label || '',
         denominator_label: s.denominator_label || '',
         cumulative: s.cumulative || false,
         thresholds: parseThresholds(s.thresholds),
       }))
     : [
-        { name: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] },
-        { name: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] },
+        { name: '', formula_desc: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] },
+        { name: '', formula_desc: '', numerator_label: '', denominator_label: '', cumulative: false, thresholds: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }] },
       ]
 
   function emptyQThresholds() {
@@ -2308,11 +2387,28 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     ? { Q1: parseThresholds(initCr.quarterly_thresholds.Q1), Q2: parseThresholds(initCr.quarterly_thresholds.Q2), Q3: parseThresholds(initCr.quarterly_thresholds.Q3), Q4: parseThresholds(initCr.quarterly_thresholds.Q4) }
     : emptyQThresholds()
 
+  const initSubMixed = initialData?.formula_type === 'multi_mixed' && initCr.sub_indicators
+    ? initCr.sub_indicators.map((s: any) => ({
+        sub_type: s.sub_type || 'threshold',
+        name: s.name || '',
+        formula_desc: s.formula_desc || '',
+        numerator_label: s.numerator_label || '',
+        denominator_label: s.denominator_label || '',
+        cumulative: s.cumulative || false,
+        rules: parseThresholds(s.rules || s.thresholds || []),
+        positive_text: s.positive_text || '',
+        negative_text: s.negative_text || '',
+      }))
+    : [
+        { sub_type: 'threshold', name: '', formula_desc: '', numerator_label: '', denominator_label: '', cumulative: false, rules: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }], positive_text: '', negative_text: '' },
+        { sub_type: 'binary_manual', name: '', formula_desc: '', numerator_label: '', denominator_label: '', cumulative: false, rules: [], positive_text: '', negative_text: '' },
+      ]
+
   const formScrollRef = useRef<HTMLDivElement>(null)
   const [formulaType, setFormulaType] = useState(initialData?.formula_type || '')
   const [name, setName] = useState(initialData?.name || '')
-  const [indicatorGroup, setIndicatorGroup] = useState(initialData?.indicator_group || '')
   const [unitName, setUnitName] = useState(initialData?.unit_name || '')
+  const [availableUnits, setAvailableUnits] = useState<string[]>([])
   const [isCommon, setIsCommon] = useState(initialData?.is_common || false)
   const [defaultWeight, setDefaultWeight] = useState(initialData?.default_weight || 0)
   const [positiveText, setPositiveText] = useState(initCr.common_text_positive || '')
@@ -2324,6 +2420,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const [thresholds, setThresholds] = useState<ThresholdRule[]>(parseThresholds(initCr.thresholds))
   const [subBinaryItems, setSubBinaryItems] = useState(initSubBinary)
   const [subThresholds, setSubThresholds] = useState(initSubThresholds)
+  const [subMixedItems, setSubMixedItems] = useState(initSubMixed)
   const [quarterlyThresholds, setQuarterlyThresholds] = useState<Record<string, ThresholdRule[]>>(initQThresholds)
   const [activeQuarter, setActiveQuarter] = useState<'Q1'|'Q2'|'Q3'|'Q4'>('Q1')
   const [formulaDesc, setFormulaDesc] = useState(initCr.formula_desc || '')
@@ -2338,12 +2435,15 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
+  useEffect(() => {
+    api.get('/kpi/units').then(r => setAvailableUnits(r.data.units || [])).catch(() => {})
+  }, [])
+
   function validate(): boolean {
     const e: Record<string, string> = {}
     if (!formulaType) e.formulaType = 'Выберите тип показателя'
     if (!name.trim()) e.name = 'Введите название показателя'
-    if (!criterion.trim()) e.criterion = 'Опишите критерий оценки'
-    if (!indicatorGroup) e.indicatorGroup = 'Выберите группу'
+    if (!['multi_binary', 'multi_mixed'].includes(formulaType) && !criterion.trim()) e.criterion = 'Опишите критерий оценки'
 
     if (formulaType === 'multi_binary') {
       if (subBinaryItems.length < 2) e.subBinary = 'Добавьте хотя бы 2 подпоказателя'
@@ -2387,6 +2487,17 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         else if (absoluteThresholds.some((r: ThresholdRule) => !r.value || isNaN(parseFloat(r.value)))) e.absoluteRules = 'Введите числовые значения порогов'
       }
     }
+    if (formulaType === 'multi_mixed') {
+      if (subMixedItems.length < 2) e.subMixed = 'Добавьте хотя бы 2 подпоказателя'
+      else {
+        for (const sub of subMixedItems) {
+          if (!sub.name.trim()) { e.subMixed = 'Заполните название каждого подпоказателя'; break }
+          if (sub.sub_type === 'threshold' && (!sub.numerator_label.trim() || !sub.denominator_label.trim())) {
+            e.subMixed = 'Заполните числитель и знаменатель для числовых подпоказателей'; break
+          }
+        }
+      }
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -2395,7 +2506,6 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     const base: any = {
       name: name.trim(),
       formula_type: formulaType,
-      indicator_group: indicatorGroup,
       unit_name: unitName || null,
       is_common: isCommon,
       default_weight: isCommon ? defaultWeight : null,
@@ -2407,9 +2517,27 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
       base.sub_indicators = subBinaryItems.map((s: any, i: number) => ({
         description: s.description, order: i, sub_type: 'sub_binary',
         ...(s.sub_criterion?.trim() ? { sub_criterion: s.sub_criterion.trim() } : {}),
+        ...(s.formula_desc?.trim() ? { formula_desc: s.formula_desc.trim() } : {}),
+        ...(s.positive_text?.trim() ? { positive_text: s.positive_text.trim() } : {}),
+        ...(s.negative_text?.trim() ? { negative_text: s.negative_text.trim() } : {}),
       }))
     }
-    if (['binary_auto', 'binary_manual', 'multi_binary', 'threshold', 'quarterly_threshold', 'multi_threshold', 'absolute_threshold'].includes(formulaType)) {
+    if (formulaType === 'multi_mixed') {
+      base.sub_indicators = subMixedItems.map((s: any, i: number) => ({
+        name: s.name, order: i, sub_type: s.sub_type || 'threshold',
+        ...(s.formula_desc?.trim() ? { formula_desc: s.formula_desc.trim() } : {}),
+        ...(s.sub_type !== 'binary_manual' ? {
+          numerator_label: s.numerator_label,
+          denominator_label: s.denominator_label,
+          cumulative: s.cumulative,
+          rules: s.rules.map((r: ThresholdRule) => ({ condition: `${r.operator}${r.value}`, score: parseFloat(r.score) })),
+        } : {
+          ...(s.positive_text?.trim() ? { positive_text: s.positive_text.trim() } : {}),
+          ...(s.negative_text?.trim() ? { negative_text: s.negative_text.trim() } : {}),
+        }),
+      }))
+    }
+    if (['binary_auto', 'binary_manual', 'multi_binary', 'threshold', 'quarterly_threshold', 'multi_threshold', 'absolute_threshold', 'multi_mixed'].includes(formulaType)) {
       if (formulaDesc.trim()) base.formula_desc = formulaDesc.trim()
     }
     if (['threshold', 'quarterly_threshold'].includes(formulaType)) {
@@ -2432,6 +2560,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     if (formulaType === 'multi_threshold') {
       base.sub_indicators = subThresholds.map((sub: any) => ({
         name: sub.name,
+        ...(sub.formula_desc?.trim() ? { formula_desc: sub.formula_desc.trim() } : {}),
         numerator_label: sub.numerator_label,
         denominator_label: sub.denominator_label,
         cumulative: sub.cumulative,
@@ -2442,6 +2571,8 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
       base.value_label = valueLabel.trim()
       base.is_quarterly = isQuarterly
       base.cumulative = cumulative
+      if (numeratorLabel.trim()) base.numerator_label = numeratorLabel.trim()
+      if (denominatorLabel.trim()) base.denominator_label = denominatorLabel.trim()
       if (isQuarterly) {
         base.quarterly_thresholds = Object.fromEntries(
           (['Q1', 'Q2', 'Q3', 'Q4'] as const).map(q => [
@@ -2465,7 +2596,6 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
       if (isEdit) {
         // For edit, only send updatable fields
         const updatePayload: any = {
-          indicator_group: payload.indicator_group,
           unit_name: payload.unit_name,
           is_common: payload.is_common,
           default_weight: payload.default_weight,
@@ -2493,20 +2623,6 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
     } catch (e: any) {
       alert(e.response?.data?.detail || 'Ошибка сохранения')
     } finally { setSaving(false) }
-  }
-
-  function copyActiveToAll() {
-    const others = (['Q1', 'Q2', 'Q3', 'Q4'] as const).filter(q => q !== activeQuarter).join(', ')
-    if (!confirm(`Скопировать правила ${activeQuarter} в ${others}? Текущие правила будут заменены.`)) return
-    setQuarterlyThresholds(prev => {
-      const src = prev[activeQuarter].map(r => ({ ...r }))
-      return {
-        Q1: activeQuarter === 'Q1' ? prev.Q1 : src,
-        Q2: activeQuarter === 'Q2' ? prev.Q2 : src,
-        Q3: activeQuarter === 'Q3' ? prev.Q3 : src,
-        Q4: activeQuarter === 'Q4' ? prev.Q4 : src,
-      }
-    })
   }
 
   const title = isEdit ? 'РЕДАКТИРОВАТЬ ПОКАЗАТЕЛЬ' : 'НОВЫЙ ПОКАЗАТЕЛЬ'
@@ -2542,9 +2658,14 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
               style={{ ...SELECT_STYLE }}
             >
               <option value="">— Выберите тип показателя —</option>
-              {Object.entries(TYPE_LABELS).map(([val, lbl]) => (
-                <option key={val} value={val}>{lbl} ({val})</option>
-              ))}
+              <option value="binary_auto">Авто (binary_auto)</option>
+              <option value="binary_manual">Ручной (binary_manual)</option>
+              <option value="multi_binary">Мульти-бинарный (multi_binary)</option>
+              <option value="threshold">Порог (threshold)</option>
+              <option value="multi_threshold">Мульти-порог (multi_threshold)</option>
+              <option value="quarterly_threshold">Квартальный (quarterly_threshold)</option>
+              <option value="absolute_threshold">Абсолютный (absolute_threshold)</option>
+              <option value="multi_mixed">Смешанный мульти (multi_mixed)</option>
             </select>
             {errors.formulaType && <div style={ERROR_STYLE}>{errors.formulaType}</div>}
             {formulaType && TYPE_DESCRIPTIONS[formulaType] && (
@@ -2568,31 +2689,15 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
             {errors.name && <div style={ERROR_STYLE}>{errors.name}</div>}
           </div>
 
-          {/* ГРУППА + Общий */}
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            <div style={{ flex: 1 }}>
-              <label style={LABEL_STYLE}>ГРУППА *</label>
-              <select
-                value={indicatorGroup}
-                onChange={e => setIndicatorGroup(e.target.value)}
-                style={SELECT_STYLE}
-              >
-                <option value="">— Выберите группу —</option>
-                {INDICATOR_GROUPS_LIST.filter(g => g.id !== 'all' && g.id !== 'Общие показатели').map(g => (
-                  <option key={g.id} value={g.id}>{g.label}</option>
-                ))}
-              </select>
-              {errors.indicatorGroup && <div style={ERROR_STYLE}>{errors.indicatorGroup}</div>}
-            </div>
-            <div style={{ paddingTop: 28 }}>
-              <label
-                title="Показатель автоматически добавляется всем 91 сотруднику. Только для HR/admin"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap' }}
-              >
-                <input type="checkbox" checked={isCommon} onChange={e => setIsCommon(e.target.checked)} />
-                Общий для всех сотрудников
-              </label>
-            </div>
+          {/* Общий */}
+          <div>
+            <label
+              title="Показатель автоматически добавляется всем 91 сотруднику. Только для HR/admin"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)' }}
+            >
+              <input type="checkbox" checked={isCommon} onChange={e => setIsCommon(e.target.checked)} />
+              Общий для всех сотрудников
+            </label>
           </div>
 
           {/* ВЕС ПО УМОЛЧАНИЮ — отдельный блок, только для is_common */}
@@ -2619,28 +2724,30 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
             <label style={LABEL_STYLE}>УПРАВЛЕНИЕ</label>
             <select value={unitName} onChange={e => setUnitName(e.target.value)} style={SELECT_STYLE}>
               <option value="">— Без привязки к управлению (общий) —</option>
-              {UNIT_LIST.map(u => <option key={u} value={u}>{u}</option>)}
+              {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
             </select>
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
               Управление которому специфически принадлежит показатель
             </div>
           </div>
 
-          {/* КРИТЕРИЙ */}
-          <div>
-            <label style={LABEL_STYLE}>КРИТЕРИЙ ОЦЕНКИ *</label>
-            <textarea
-              rows={4}
-              value={criterion}
-              onChange={e => setCriterion(e.target.value)}
-              placeholder="Опишите что именно оценивается и по какому принципу"
-              style={{ ...INPUT_STYLE, resize: 'vertical' }}
-            />
-            {errors.criterion && <div style={ERROR_STYLE}>{errors.criterion}</div>}
-          </div>
+          {/* КРИТЕРИЙ — скрываем для multi_binary и multi_mixed (критерии = подпоказатели) */}
+          {!['multi_binary', 'multi_mixed'].includes(formulaType) && (
+            <div>
+              <label style={LABEL_STYLE}>КРИТЕРИЙ ОЦЕНКИ *</label>
+              <textarea
+                rows={4}
+                value={criterion}
+                onChange={e => setCriterion(e.target.value)}
+                placeholder="Опишите что именно оценивается и по какому принципу"
+                style={{ ...INPUT_STYLE, resize: 'vertical' }}
+              />
+              {errors.criterion && <div style={ERROR_STYLE}>{errors.criterion}</div>}
+            </div>
+          )}
 
-          {/* ТЕКСТ ДЛЯ ОТЧЁТА — binary_manual и multi_binary */}
-          {['binary_manual', 'multi_binary'].includes(formulaType) && (
+          {/* ТЕКСТ ДЛЯ ОТЧЁТА — только binary_manual */}
+          {formulaType === 'binary_manual' && (
             <div style={{ padding: '14px 16px', background: 'rgba(0,255,157,0.03)', border: '1px solid rgba(0,255,157,0.12)', borderRadius: 8 }}>
               <div style={{ fontSize: 11, color: 'var(--accent3)', fontFamily: 'Orbitron, monospace', marginBottom: 12, letterSpacing: 1 }}>ТЕКСТ ДЛЯ ОТЧЁТА</div>
               <div style={{ fontSize: 11, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif', marginBottom: 12 }}>
@@ -2670,14 +2777,18 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           )}
 
           {/* МЕТОДИКА РАСЧЁТА */}
-          {['binary_auto', 'binary_manual', 'multi_binary', 'threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold'].includes(formulaType) && (
+          {['binary_auto', 'binary_manual', 'multi_binary', 'threshold', 'multi_threshold', 'quarterly_threshold', 'absolute_threshold', 'multi_mixed'].includes(formulaType) && (
             <div>
               <label style={LABEL_STYLE}>МЕТОДИКА РАСЧЁТА</label>
               <textarea
                 rows={3}
                 value={formulaDesc}
                 onChange={e => setFormulaDesc(e.target.value)}
-                placeholder="Опишите условие выполнения показателя в понятном виде. Например: «Отсутствие более 2-х повторных согласований ЛНА»"
+                placeholder={
+                  ['multi_binary', 'multi_mixed'].includes(formulaType)
+                    ? 'Все подпоказатели выполнены → 100%, хотя бы один нет → 0%'
+                    : 'Опишите условие выполнения показателя в понятном виде. Например: «Отсутствие более 2-х повторных согласований ЛНА»'
+                }
                 style={{ ...INPUT_STYLE, resize: 'vertical' }}
               />
               <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
@@ -2727,11 +2838,41 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                     <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'Exo 2, sans-serif' }}>
                       Как именно руководитель проверяет этот подпоказатель
                     </div>
+                    <div style={{ marginTop: 8 }}>
+                      <label style={{ ...LABEL_STYLE, fontSize: 10 }}>МЕТОДИКА РАСЧЁТА *</label>
+                      <textarea
+                        rows={2}
+                        value={item.formula_desc || ''}
+                        onChange={e => { const u = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, formula_desc: e.target.value } : s); setSubBinaryItems(u) }}
+                        placeholder="Как рассчитывается этот подпоказатель"
+                        style={{ ...INPUT_STYLE, resize: 'vertical', fontSize: 12 }}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                      <div>
+                        <label style={{ ...LABEL_STYLE, color: 'var(--accent3)', fontSize: 10 }}>ТЕКСТ ПРИ ВЫПОЛНЕНИИ</label>
+                        <input
+                          value={item.positive_text || ''}
+                          onChange={e => { const u = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, positive_text: e.target.value } : s); setSubBinaryItems(u) }}
+                          placeholder="Выполнено"
+                          style={{ ...INPUT_STYLE, fontSize: 12 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ ...LABEL_STYLE, color: 'var(--danger)', fontSize: 10 }}>ТЕКСТ ПРИ НЕВЫПОЛНЕНИИ</label>
+                        <input
+                          value={item.negative_text || ''}
+                          onChange={e => { const u = subBinaryItems.map((s: any, idx: number) => idx === i ? { ...s, negative_text: e.target.value } : s); setSubBinaryItems(u) }}
+                          placeholder="Не выполнено"
+                          style={{ ...INPUT_STYLE, fontSize: 12 }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
               <button
-                onClick={() => setSubBinaryItems([...subBinaryItems, { description: '', order: subBinaryItems.length, sub_criterion: '' }])}
+                onClick={() => setSubBinaryItems([...subBinaryItems, { description: '', order: subBinaryItems.length, sub_criterion: '', formula_desc: '', positive_text: '', negative_text: '' }])}
                 style={{ background: 'rgba(0,229,255,0.08)', border: '1px solid rgba(0,229,255,0.3)', borderRadius: 6, color: 'var(--accent)', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontFamily: 'Exo 2, sans-serif' }}
               >
                 + Добавить подпоказатель
@@ -2793,6 +2934,10 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                     <label style={LABEL_STYLE}>НАЗВАНИЕ</label>
                     <input value={sub.name} onChange={e => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, name: e.target.value } : s); setSubThresholds(u) }} placeholder="Название подпоказателя" style={INPUT_STYLE} />
                   </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={LABEL_STYLE}>МЕТОДИКА РАСЧЁТА</label>
+                    <textarea rows={2} value={sub.formula_desc || ''} onChange={e => { const u = subThresholds.map((s: any, idx: number) => idx === i ? { ...s, formula_desc: e.target.value } : s); setSubThresholds(u) }} placeholder="Описание формулы для этого подпоказателя" style={{ ...INPUT_STYLE, resize: 'vertical', fontSize: 12 }} />
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
                     <div>
                       <label style={LABEL_STYLE}>ЧИСЛИТЕЛЬ *</label>
@@ -2821,6 +2966,83 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                 + Добавить подпоказатель
               </button>
               {errors.subThresholds && <div style={ERROR_STYLE}>{errors.subThresholds}</div>}
+            </div>
+          )}
+
+          {/* === MULTI_MIXED: Подпоказатели смешанного типа === */}
+          {formulaType === 'multi_mixed' && (
+            <div>
+              <label style={LABEL_STYLE}>ПОДПОКАЗАТЕЛИ * (минимум 2)</label>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, fontFamily: 'Exo 2, sans-serif' }}>
+                Числовые (threshold) вводит сотрудник, ручные (binary_manual) оценивает руководитель. Все выполнены → 100%, хотя бы один нет → 0%.
+              </div>
+              {subMixedItems.map((sub: any, i: number) => (
+                <div key={i} style={{ padding: '12px 16px', background: 'rgba(232,121,249,0.06)', border: '1px solid rgba(232,121,249,0.2)', borderRadius: 8, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: '#e879f9', fontFamily: 'Orbitron, monospace' }}>ПОДПОКАЗАТЕЛЬ {i + 1}</div>
+                    {subMixedItems.length > 2 && (
+                      <button onClick={() => setSubMixedItems(subMixedItems.filter((_: any, idx: number) => idx !== i))} style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 16 }}>🗑</button>
+                    )}
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={LABEL_STYLE}>ТИП *</label>
+                    <select value={sub.sub_type || 'threshold'} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, sub_type: e.target.value } : s); setSubMixedItems(u) }} style={SELECT_STYLE}>
+                      <option value="threshold">Числовой (threshold)</option>
+                      <option value="binary_manual">Ручной (binary_manual)</option>
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={LABEL_STYLE}>НАЗВАНИЕ *</label>
+                    <input value={sub.name} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, name: e.target.value } : s); setSubMixedItems(u) }} placeholder="Название подпоказателя" style={INPUT_STYLE} />
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={LABEL_STYLE}>МЕТОДИКА РАСЧЁТА *</label>
+                    <textarea rows={2} value={sub.formula_desc || ''} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, formula_desc: e.target.value } : s); setSubMixedItems(u) }} placeholder="Описание методики" style={{ ...INPUT_STYLE, resize: 'vertical', fontSize: 12 }} />
+                  </div>
+                  {(sub.sub_type === 'threshold' || !sub.sub_type) && (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 8 }}>
+                        <div>
+                          <label style={LABEL_STYLE}>ЧИСЛИТЕЛЬ *</label>
+                          <input value={sub.numerator_label || ''} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, numerator_label: e.target.value } : s); setSubMixedItems(u) }} style={INPUT_STYLE} />
+                        </div>
+                        <div>
+                          <label style={LABEL_STYLE}>ЗНАМЕНАТЕЛЬ *</label>
+                          <input value={sub.denominator_label || ''} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, denominator_label: e.target.value } : s); setSubMixedItems(u) }} style={INPUT_STYLE} />
+                        </div>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontFamily: 'Exo 2, sans-serif', fontSize: 13, color: 'var(--text)', marginBottom: 10 }}>
+                        <input type="checkbox" checked={sub.cumulative || false} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, cumulative: e.target.checked } : s); setSubMixedItems(u) }} />
+                        Нарастающим итогом
+                      </label>
+                      <div style={{ fontSize: 11, color: '#e879f9', fontFamily: 'Orbitron, monospace', marginBottom: 6 }}>ПРАВИЛА ОЦЕНКИ</div>
+                      <ThresholdRulesEditor
+                        rules={sub.rules || []}
+                        onChange={newRules => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, rules: newRules } : s); setSubMixedItems(u) }}
+                      />
+                    </>
+                  )}
+                  {sub.sub_type === 'binary_manual' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                      <div>
+                        <label style={{ ...LABEL_STYLE, color: 'var(--accent3)', fontSize: 10 }}>ТЕКСТ ПРИ ВЫПОЛНЕНИИ</label>
+                        <input value={sub.positive_text || ''} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, positive_text: e.target.value } : s); setSubMixedItems(u) }} placeholder="Выполнено" style={{ ...INPUT_STYLE, fontSize: 12 }} />
+                      </div>
+                      <div>
+                        <label style={{ ...LABEL_STYLE, color: 'var(--danger)', fontSize: 10 }}>ТЕКСТ ПРИ НЕВЫПОЛНЕНИИ</label>
+                        <input value={sub.negative_text || ''} onChange={e => { const u = subMixedItems.map((s: any, idx: number) => idx === i ? { ...s, negative_text: e.target.value } : s); setSubMixedItems(u) }} placeholder="Не выполнено" style={{ ...INPUT_STYLE, fontSize: 12 }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button
+                onClick={() => setSubMixedItems([...subMixedItems, { sub_type: 'threshold', name: '', formula_desc: '', numerator_label: '', denominator_label: '', cumulative: false, rules: [{ operator: '>=', value: '', score: '' }, { operator: '<', value: '', score: '0' }], positive_text: '', negative_text: '' }])}
+                style={{ background: 'rgba(232,121,249,0.08)', border: '1px solid rgba(232,121,249,0.3)', borderRadius: 6, color: '#e879f9', cursor: 'pointer', fontSize: 12, padding: '4px 12px', fontFamily: 'Exo 2, sans-serif' }}
+              >
+                + Добавить подпоказатель
+              </button>
+              {errors.subMixed && <div style={ERROR_STYLE}>{errors.subMixed}</div>}
             </div>
           )}
 
@@ -2858,10 +3080,6 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                       {q}
                     </button>
                   ))}
-                  <div style={{ flex: 1 }} />
-                  <button onClick={copyActiveToAll} style={{ background: 'rgba(255,140,0,0.08)', border: '1px solid rgba(255,140,0,0.3)', borderRadius: 6, color: '#ff8c00', cursor: 'pointer', fontSize: 11, padding: '4px 10px', fontFamily: 'Exo 2, sans-serif' }}>
-                    Скопировать {activeQuarter} во все →
-                  </button>
                 </div>
                 <ThresholdRulesEditor
                   rules={quarterlyThresholds[activeQuarter]}
@@ -2885,10 +3103,23 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                   style={INPUT_STYLE}
                 />
                 {errors.valueLabel && <div style={ERROR_STYLE}>{errors.valueLabel}</div>}
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontFamily: 'Exo 2, sans-serif' }}>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, marginBottom: 12, fontFamily: 'Exo 2, sans-serif' }}>
                   Как называется вводимое сотрудником значение
                 </div>
-                <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 4 }}>
+                  <div>
+                    <label style={LABEL_STYLE}>ЧИСЛИТЕЛЬ</label>
+                    <input value={numeratorLabel} onChange={e => setNumeratorLabel(e.target.value)} placeholder="Фактическое значение, млн. руб." style={INPUT_STYLE} />
+                  </div>
+                  <div>
+                    <label style={LABEL_STYLE}>ЗНАМЕНАТЕЛЬ</label>
+                    <input value={denominatorLabel} onChange={e => setDenominatorLabel(e.target.value)} placeholder="Плановое значение, млн. руб." style={INPUT_STYLE} />
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12, fontFamily: 'Exo 2, sans-serif' }}>
+                  Необязательно. Используется если абсолютное значение рассчитывается как числитель / знаменатель.
+                </div>
+                <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-dim)', fontFamily: 'Exo 2, sans-serif' }}>
                     <input type="checkbox" checked={cumulative} onChange={e => setCumulative(e.target.checked)} />
                     Нарастающим итогом
@@ -2920,20 +3151,6 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
                         {q}
                       </button>
                     ))}
-                    <div style={{ flex: 1 }} />
-                    <button
-                      onClick={() => {
-                        const others = (['Q1','Q2','Q3','Q4'] as const).filter(q => q !== activeQuarter).join(', ')
-                        if (!confirm(`Скопировать правила ${activeQuarter} в ${others}? Текущие правила будут заменены.`)) return
-                        setAbsoluteQThresholds(prev => {
-                          const src = prev[activeQuarter].map(r => ({ ...r }))
-                          return { Q1: activeQuarter==='Q1'?prev.Q1:src, Q2: activeQuarter==='Q2'?prev.Q2:src, Q3: activeQuarter==='Q3'?prev.Q3:src, Q4: activeQuarter==='Q4'?prev.Q4:src }
-                        })
-                      }}
-                      style={{ background: 'rgba(255,149,0,0.08)', border: '1px solid rgba(255,149,0,0.3)', borderRadius: 6, color: '#ff9500', cursor: 'pointer', fontSize: 11, padding: '4px 10px', fontFamily: 'Exo 2, sans-serif' }}
-                    >
-                      Скопировать {activeQuarter} во все →
-                    </button>
                   </div>
                   <ThresholdRulesEditor
                     rules={absoluteQThresholds[activeQuarter]}
@@ -2962,9 +3179,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
 function KpiIndicatorsTab() {
   const [indicators, setIndicators] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeGroup, setActiveGroup] = useState('all')
   const [activeUnit, setActiveUnit] = useState('all')
-  const [panelMode, setPanelMode] = useState<'groups'|'units'>('groups')
   const [search, setSearch] = useState('')
   const [editingIndicator, setEditingIndicator] = useState<any>(null)
   const [viewIndicatorId, setViewIndicatorId] = useState<string|null>(null)
@@ -2992,11 +3207,6 @@ function KpiIndicatorsTab() {
     return () => window.removeEventListener('keydown', handleEsc)
   }, [])
 
-  const groupCounts: Record<string, number> = { all: indicators.length }
-  for (const g of INDICATOR_GROUPS_LIST.slice(1)) {
-    groupCounts[g.id] = indicators.filter(ind => (ind.indicator_group || 'Прочие показатели') === g.id).length
-  }
-
   // Уникальные управления из данных
   const unitCounts: Record<string, number> = { all: indicators.length }
   for (const u of UNIT_LIST) {
@@ -3005,13 +3215,9 @@ function KpiIndicatorsTab() {
   unitCounts['—'] = indicators.filter(ind => !ind.unit_name).length
 
   const filtered = indicators.filter(ind => {
-    if (panelMode === 'groups') {
-      if (activeGroup !== 'all' && (ind.indicator_group || 'Прочие показатели') !== activeGroup) return false
-    } else {
-      if (activeUnit !== 'all') {
-        if (activeUnit === '—' && ind.unit_name) return false
-        if (activeUnit !== '—' && ind.unit_name !== activeUnit) return false
-      }
+    if (activeUnit !== 'all') {
+      if (activeUnit === '—' && ind.unit_name) return false
+      if (activeUnit !== '—' && ind.unit_name !== activeUnit) return false
     }
     if (search && !ind.name.toLowerCase().includes(search.toLowerCase())) return false
     return true
@@ -3058,43 +3264,9 @@ function KpiIndicatorsTab() {
 
       {/* Двухколоночный layout с внутренним скроллом */}
       <div style={{ display: 'flex', height: 'calc(100vh - 200px)', overflow: 'hidden' }}>
-        {/* Сайдбар групп / управлений */}
-        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {/* Переключатель режимов */}
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-            {(['groups', 'units'] as const).map(mode => (
-              <button key={mode} onClick={() => { setPanelMode(mode); setActiveGroup('all'); setActiveUnit('all') }}
-                style={{ flex: 1, padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, fontFamily: 'Orbitron, monospace', letterSpacing: 0.5,
-                  color: panelMode === mode ? 'var(--accent)' : 'var(--text-dim)',
-                  borderBottom: panelMode === mode ? '2px solid var(--accent)' : '2px solid transparent',
-                }}
-              >
-                {mode === 'groups' ? 'ПО ГРУППАМ' : 'ПО УПРАВЛ.'}
-              </button>
-            ))}
-          </div>
-          {/* Список */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-          {panelMode === 'groups' ? INDICATOR_GROUPS_LIST.map(g => (
-            <div
-              key={g.id}
-              onClick={() => setActiveGroup(g.id)}
-              style={{
-                padding: '10px 16px', cursor: 'pointer',
-                borderLeft: activeGroup === g.id ? '3px solid var(--accent)' : '3px solid transparent',
-                background: activeGroup === g.id ? 'rgba(0,229,255,0.06)' : 'transparent',
-                color: activeGroup === g.id ? 'var(--accent)' : 'rgba(232,234,246,0.65)',
-                fontFamily: 'Exo 2, sans-serif', fontSize: 12,
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                transition: 'all 0.15s', borderRadius: '0 6px 6px 0',
-              }}
-            >
-              <span>{g.label}</span>
-              <span style={{ background: activeGroup === g.id ? 'rgba(0,229,255,0.15)' : 'rgba(255,255,255,0.06)', color: activeGroup === g.id ? 'var(--accent)' : 'var(--text-dim)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontFamily: 'Orbitron, monospace' }}>
-                {groupCounts[g.id] ?? 0}
-              </span>
-            </div>
-          )) : [{ id: 'all', label: '📋 Все' }, ...UNIT_LIST.map(u => ({ id: u, label: `🏢 ${u}` })), { id: '—', label: '⬜ Без управления' }].map(u => (
+        {/* Сайдбар по управлениям */}
+        <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto' }}>
+          {[{ id: 'all', label: '📋 Все' }, ...UNIT_LIST.map(u => ({ id: u, label: `🏢 ${u}` })), { id: '—', label: '⬜ Без управления' }].map(u => (
             <div
               key={u.id}
               onClick={() => setActiveUnit(u.id)}
@@ -3114,7 +3286,6 @@ function KpiIndicatorsTab() {
               </span>
             </div>
           ))}
-          </div>
         </div>
 
         {/* Основная область */}

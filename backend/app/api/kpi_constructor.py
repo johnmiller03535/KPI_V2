@@ -16,7 +16,7 @@ from app.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.models.user import User, UserRole
 from app.models.kpi_constructor import (
-    KpiIndicator, KpiCriterion, KpiRoleCard, KpiRoleCardIndicator,
+    KpiIndicator, KpiCriterion, KpiRoleCard, KpiRoleCardIndicator, KpiManagementUnit,
 )
 from app.schemas.kpi_constructor import (
     IndicatorCreate, IndicatorUpdate, IndicatorResponse, CriterionResponse,
@@ -140,6 +140,17 @@ async def _build_card_response(db: AsyncSession, card: KpiRoleCard) -> CardRespo
         indicators=ind_responses,
         total_weight=total_weight,
     )
+
+
+# ─── UNITS ────────────────────────────────────────────────────────────────────
+
+@router.get("/units")
+async def get_units(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(KpiManagementUnit.name).order_by(KpiManagementUnit.name)
+    )
+    units = [r[0] for r in result.fetchall()]
+    return {"units": units}
 
 
 # ─── INDICATORS ───────────────────────────────────────────────────────────────

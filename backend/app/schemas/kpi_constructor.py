@@ -8,10 +8,31 @@ from pydantic import BaseModel
 
 # ─── Indicator ────────────────────────────────────────────────────────────────
 
+# Допустимые типы показателей:
+#   binary_auto        — AI оценивает автоматически (0/100)
+#   binary_manual      — Руководитель вводит ✅/❌ (0/100)
+#   multi_binary       — Руководитель по каждому подпоказателю (sub_type="sub_binary")
+#   threshold          — числитель/знаменатель, единые пороги (0/50/100)
+#   multi_threshold    — подпоказатели с собственными числитель/знаменатель и порогами
+#   quarterly_threshold— числитель/знаменатель, пороги по Q1-Q4
+#   absolute_threshold — одно абсолютное число, единые или квартальные пороги (is_quarterly)
+#   multi_mixed        — подпоказатели смешанных типов: threshold + binary_manual
+
+# sub_indicators структура по типам:
+#   multi_binary: [{"id": uuid, "name": "...", "sub_type": "sub_binary",
+#                   "formula_desc": "...", "positive_text": "...", "negative_text": "..."}]
+#   multi_threshold: [{"id": uuid, "name": "...", "sub_type": "sub_threshold",
+#                      "formula_desc": "...", "numerator_label": "...", "denominator_label": "...",
+#                      "cumulative": false, "rules": [...]}]
+#   multi_mixed: [{"id": uuid, "name": "...", "sub_type": "threshold"|"binary_manual",
+#                  "formula_desc": "...", "positive_text": "...", "negative_text": "...",
+#                  "numerator_label": "...", "denominator_label": "...",
+#                  "cumulative": false, "rules": [...]}]
+
 class IndicatorCreate(BaseModel):
     code: Optional[str] = None
     name: str
-    formula_type: str                           # binary_auto | binary_manual | threshold | multi_threshold | quarterly_threshold | absolute_threshold
+    formula_type: str                           # binary_auto | binary_manual | multi_binary | threshold | multi_threshold | quarterly_threshold | absolute_threshold | multi_mixed
     is_common: bool = False
     is_editable_per_role: bool = True
     indicator_group: Optional[str] = None
@@ -21,23 +42,23 @@ class IndicatorCreate(BaseModel):
     criterion: str
     numerator_label: Optional[str] = None
     denominator_label: Optional[str] = None
-    thresholds: Optional[list[dict]] = None     # [{condition, score}]
-    sub_indicators: Optional[list[dict]] = None
-    quarterly_thresholds: Optional[dict] = None
+    thresholds: Optional[list[dict]] = None     # [{op, value, score}]
+    sub_indicators: Optional[list[dict]] = None  # структура зависит от formula_type (см. выше)
+    quarterly_thresholds: Optional[dict] = None  # {q1: [{op, value, score}], q2: ..., q3: ..., q4: ...}
     cumulative: bool = False
     plan_value: Optional[str] = None
     common_text_positive: Optional[str] = None
     common_text_negative: Optional[str] = None
     value_label: Optional[str] = None           # для absolute_threshold: подпись поля ввода
     is_quarterly: bool = False                  # для absolute_threshold: квартальные пороги
-    formula_desc: Optional[str] = None          # методика расчёта (для threshold-типов)
+    formula_desc: Optional[str] = None          # методика расчёта (показывается сотруднику)
 
 
 class IndicatorUpdate(BaseModel):
     code: Optional[str] = None
     name: Optional[str] = None
     # TODO: АУДИТ 2026-05-04 — смена типа разрешена временно
-    formula_type: Optional[str] = None
+    formula_type: Optional[str] = None          # binary_auto | binary_manual | multi_binary | threshold | multi_threshold | quarterly_threshold | absolute_threshold | multi_mixed
     is_editable_per_role: Optional[bool] = None
     is_common: Optional[bool] = None            # только hr, admin
     indicator_group: Optional[str] = None
@@ -47,16 +68,16 @@ class IndicatorUpdate(BaseModel):
     criterion: Optional[str] = None
     numerator_label: Optional[str] = None
     denominator_label: Optional[str] = None
-    thresholds: Optional[list[dict]] = None
-    sub_indicators: Optional[list[dict]] = None
-    quarterly_thresholds: Optional[dict] = None
+    thresholds: Optional[list[dict]] = None      # [{op, value, score}]
+    sub_indicators: Optional[list[dict]] = None  # структура зависит от formula_type (см. IndicatorCreate)
+    quarterly_thresholds: Optional[dict] = None  # {q1: [{op, value, score}], q2: ..., q3: ..., q4: ...}
     cumulative: Optional[bool] = None
     plan_value: Optional[str] = None
     common_text_positive: Optional[str] = None
     common_text_negative: Optional[str] = None
-    value_label: Optional[str] = None
-    is_quarterly: Optional[bool] = None
-    formula_desc: Optional[str] = None
+    value_label: Optional[str] = None           # для absolute_threshold: подпись поля ввода
+    is_quarterly: Optional[bool] = None         # для absolute_threshold: квартальные пороги
+    formula_desc: Optional[str] = None          # методика расчёта (показывается сотруднику)
 
 
 class CriterionResponse(BaseModel):
