@@ -2468,6 +2468,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
           indicator_group: payload.indicator_group,
           unit_name: payload.unit_name,
           is_common: payload.is_common,
+          default_weight: payload.default_weight,
           criterion: payload.criterion,
           numerator_label: payload.numerator_label,
           denominator_label: payload.denominator_label,
