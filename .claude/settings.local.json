@@ -49,7 +49,9 @@
       "Bash(pip show:*)",
       "Bash(npx --yes tsc --noEmit)",
       "Bash(/Users/valeriy/KPI_V2/frontend/node_modules/.bin/tsc --noEmit --project /Users/valeriy/KPI_V2/frontend/tsconfig.json)",
-      "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)"
+      "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(docker exec:*)",
+      "Bash(git reset:*)"
     ]
   }
 }
