@@ -2409,7 +2409,7 @@ function IndicatorFormModal({ initialData, onClose, onSuccess }: {
         ...(s.sub_criterion?.trim() ? { sub_criterion: s.sub_criterion.trim() } : {}),
       }))
     }
-    if (['binary_manual', 'multi_binary', 'threshold', 'quarterly_threshold', 'multi_threshold', 'absolute_threshold'].includes(formulaType)) {
+    if (['binary_auto', 'binary_manual', 'multi_binary', 'threshold', 'quarterly_threshold', 'multi_threshold', 'absolute_threshold'].includes(formulaType)) {
       if (formulaDesc.trim()) base.formula_desc = formulaDesc.trim()
     }
     if (['threshold', 'quarterly_threshold'].includes(formulaType)) {
